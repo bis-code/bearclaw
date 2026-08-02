@@ -5,6 +5,16 @@
 *.bak
 __pycache__/
 
+# Secrets — never tracked. Nothing here needs them, but a hook or MCP server
+# you add might, and a public repo is an unforgiving place to find that out.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+credentials.json
+
 # Machine-specific runtime state — never tracked
 policy-limits.json
 plugins/
