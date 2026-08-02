@@ -11,7 +11,7 @@ Estimate token overhead across every loaded component in the active Claude Code 
 
 **Read-only.** This skill measures and recommends; it never removes components. Apply removals yourself (or via the relevant cleanup).
 
-**Scope:** scan the active config root — `${CLAUDE_CONFIG_DIR:-$HOME/.claude}` for `agents/`, `skills/`, `rules/` — plus the project + user `CLAUDE.md` chain and the active `.mcp.json`. Many of these are symlinks (e.g. `~/.claude/skills` → claude-setup, and `~/.claude-work` mirrors it): **resolve symlinks and skip identical copies** so a component shared across config roots is counted once.
+**Scope:** scan the active config root — `${CLAUDE_CONFIG_DIR:-$HOME/.claude}` for `agents/`, `skills/`, `rules/` — plus the project + user `CLAUDE.md` chain and the active `.mcp.json`. Many of these are symlinks (e.g. `~/.claude/skills` → claude-setup, and other config roots mirror the same tooling): **resolve symlinks and skip identical copies** so a component shared across config roots is counted once.
 
 ## How It Works
 

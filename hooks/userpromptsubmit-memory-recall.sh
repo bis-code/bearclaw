@@ -19,8 +19,9 @@ search() { # <index>
   leann search "$1" "$PROMPT" --top-k 8 --json --non-interactive --show-metadata 2>/dev/null
 }
 # Per-root global tier: derive the index name from the active config root so
-# cl-p (~/.claude -> claude-memory-global) and cl-w (~/.claude-work ->
-# claude-work-memory-global) never share global memory. Overridable for tests.
+# each config root keeps its own global memory index (e.g. ~/.claude ->
+# claude-memory-global) and never shares global memory with another root.
+# Overridable for tests.
 GLOBAL_MEM_INDEX="${GLOBAL_MEM_INDEX:-$(basename "${CLAUDE_CONFIG_DIR:-$HOME/.claude}" | sed 's/^\.//')-memory-global}"
 GLOBAL_MEM_DIR="${GLOBAL_MEM_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/memory-global}"
 GLOBAL=$(search "$GLOBAL_MEM_INDEX")

@@ -1,7 +1,8 @@
 #!/bin/sh
 # claude-mirror-tooling — mirror shared Claude tooling from one config root into
-# another, so a second CLAUDE_CONFIG_DIR (e.g. a separate work subscription at
-# ~/.claude-work) gets the same skills/agents/commands as your primary root.
+# another, so a second CLAUDE_CONFIG_DIR (e.g. a second Claude Code account or
+# a secondary machine profile) gets the same skills/agents/commands as your
+# primary root.
 #
 # Account-agnostic by design: it mirrors only tooling DIRECTORIES
 # (rules, hooks, agents, bin, commands, memory-global, skills) and NEVER touches
@@ -12,20 +13,21 @@
 #     (created only if absent; an existing real dir or foreign symlink is left
 #     untouched, so nothing is clobbered)
 #   - skills -> ADDITIVE: each src skill is symlinked in only if absent, so
-#     root-specific skills (e.g. work-standup) are preserved
+#     root-specific skills (e.g. a skill only relevant to that other root) are
+#     preserved
 #
 # Usage:  claude-mirror-tooling <src-config-root> <dst-config-root>
-#   e.g.  claude-mirror-tooling ~/.claude ~/.claude-work
+#   e.g.  claude-mirror-tooling ~/.claude ~/.claude-other
 #
-# The "which roots" knowledge stays in your shell (the cl-w / cl-p aliases) —
-# this tool is just the mechanism. Re-run after adding skills/agents to propagate.
+# The "which roots" knowledge stays in your own shell aliases — this tool is
+# just the mechanism. Re-run after adding skills/agents to propagate.
 
 set -e
 
 SRC="$1"; DST="$2"
 if [ -z "$SRC" ] || [ -z "$DST" ]; then
     echo "usage: claude-mirror-tooling <src-config-root> <dst-config-root>" >&2
-    echo "  e.g. claude-mirror-tooling ~/.claude ~/.claude-work" >&2
+    echo "  e.g. claude-mirror-tooling ~/.claude ~/.claude-other" >&2
     exit 2
 fi
 [ -d "$SRC" ] || { echo "src config root not found: $SRC" >&2; exit 1; }
@@ -44,14 +46,14 @@ link_dir() {
 }
 
 # Global memory: per-root, NOT shared. Each config root keeps its OWN global
-# memory tier so personal-context facts never bleed across roots (e.g. into a
-# work subscription). Seed an empty own dir in dst if absent; never clobber.
+# memory tier so its facts never bleed across roots into another config root.
+# Seed an empty own dir in dst if absent; never clobber.
 # Pair this with GLOBAL_MEM_DIR + GLOBAL_MEM_INDEX in the dst root's settings.json
 # (this tool never touches settings — see the NOTE it prints).
 seed_memory_global() {
     dst="$DST/memory-global"
     if [ -e "$dst" ] || [ -L "$dst" ]; then echo "ok   memory-global (present — per-root, not shared)"; return 0; fi
-    idx="$(basename "$DST" | sed 's/^\.//')-memory-global"   # ~/.claude-work -> claude-work-memory-global
+    idx="$(basename "$DST" | sed 's/^\.//')-memory-global"   # ~/.claude-other -> claude-other-memory-global
     mkdir -p "$dst"
     printf '<!-- Per-root global memory index. One line per entry: `- [Title](slug.md) - hook`.\nIsolated per config root: the memory hooks resolve this tier from CLAUDE_CONFIG_DIR\n(%s -> index %s) automatically; no settings.json change is needed. -->\n' "$DST" "$idx" > "$dst/MEMORY.md"
     printf '# ERRORS - failure journal (per-root global tier)\n' > "$dst/ERRORS.md"
