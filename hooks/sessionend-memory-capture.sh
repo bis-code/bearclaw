@@ -38,4 +38,9 @@ JSON=$(jq -nc \
   2>/dev/null)
 [ -n "$JSON" ] && memstore_enqueue_raw "$JSON" >/dev/null
 
+# Bound the audit trail while we are already here. done/ had reached 490
+# drained pointers over six weeks with nothing pruning it, plus orphaned
+# signal files. Pending captures in raw/ are untouched — see memstore_prune_done.
+command -v memstore_prune_done >/dev/null 2>&1 && memstore_prune_done
+
 exit 0
