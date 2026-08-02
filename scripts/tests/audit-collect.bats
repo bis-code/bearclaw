@@ -166,9 +166,9 @@ teardown() { rm -rf "$FIXTURE"; }
 }
 
 @test "is_mcp_referenced: true when repo path appears in an .mcp.json" {
-  printf '%s' '{"mcpServers":{"x":{"args":["/home/x/youtube-mcps/foo-mcp/build/index.js"]}}}' \
+  printf '%s' '{"mcpServers":{"x":{"args":["/home/x/mcp-servers/foo-mcp/build/index.js"]}}}' \
     > "$FIXTURE/a.mcp.json"
-  run is_mcp_referenced "/home/x/youtube-mcps/foo-mcp" "$FIXTURE/a.mcp.json"
+  run is_mcp_referenced "/home/x/mcp-servers/foo-mcp" "$FIXTURE/a.mcp.json"
   [ "$status" -eq 0 ]
 }
 
