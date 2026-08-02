@@ -16,7 +16,7 @@ cd "$REPO"
 # this can't false-positive the way a lowercase "trip it" would. Do not add
 # a lowercase "trip it" (space-separated) variant back — that's the exact
 # false positive this comment warns against.
-BANNED='scopito|heliscope|TRIP IT|Trip It|trip-it|ev-trip-it|web3-backend|baicoianu|/Users/|~/som|~/work|\bbis-code/claude-setup\b|\b[Tt]rip[_-]?[Ii]t\b|homelab|wevibbingiob'
+BANNED='scopito|heliscope|TRIP IT|Trip It|trip-it|ev-trip-it|web3-backend|baicoianu|/Users/|~/som|~/work|\bbis-code/claude-setup\b|\b[Tt]rip[_-]?[Ii]t\b|homelab|wevibbingiob|youtube-mcps|idea-bank|epidemic-sound|obs-mcp|premiere-pro'
 
 # -H forces the filename prefix even when xargs' final batch is a single
 # file (otherwise grep omits it, breaking both the file:line output below
