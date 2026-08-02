@@ -110,8 +110,11 @@ scan_stale() {
     case "$base" in ERRORS.md|ERRORS.archive.md) continue ;; esac
     oldest="$(grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' "$f" 2>/dev/null | sort | head -1)"
     [ -n "$oldest" ] || continue
-    epoch="$(date -j -f '%Y-%m-%d' "$oldest" +%s 2>/dev/null || echo 0)"
-    [ "$epoch" -gt 0 ] || continue
+    epoch="$(date -j -f '%Y-%m-%d' "$oldest" +%s 2>/dev/null || date -d "$oldest" +%s 2>/dev/null)"
+    if [ -z "$epoch" ]; then
+      note "- WARN: could not parse date $oldest in $base"
+      continue
+    fi
     d="$(( (now - epoch) / 86400 ))"
     [ "$d" -gt "$STALE_DAYS" ] && note "- STALE-CANDIDATE: $base (oldest date $oldest, ${d}d ago)"
   done

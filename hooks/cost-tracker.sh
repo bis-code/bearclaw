@@ -115,7 +115,7 @@ worker() {
         | (if   ($m | test("haiku")) then {i:0.80, o:4.0,  cw:1.00,  cr:0.08}
            elif ($m | test("opus"))  then {i:15.0, o:75.0, cw:18.75, cr:1.50}
            else                            {i:3.0,  o:15.0, cw:3.75,  cr:0.30} end) as $r
-        | (((($i/1e6)*$r.i + ($o/1e6)*$r.o + ($cw/1e6)*$r.cw + ($cr/1e6)*$r.cr) * 1e6) | round) / 1e6 as $cost
+        | ((((($i/1e6)*$r.i + ($o/1e6)*$r.o + ($cw/1e6)*$r.cw + ($cr/1e6)*$r.cr) * 1e6 | round) / 1e6)) as $cost
         | {timestamp:$ts, session_id:$sid, project:$proj, model:$model,
            input_tokens:$i, output_tokens:$o, cache_write_tokens:$cw,
            cache_read_tokens:$cr, estimated_cost_usd:$cost}' 2>/dev/null)
