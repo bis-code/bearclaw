@@ -1,0 +1,71 @@
+#!/bin/sh
+# Tests for sessionstart-heal-settings.sh. Uses CLAUDE_SETUP_REPO + CLAUDE_CONFIG_DIR
+# seams to point at temp repo/root dirs instead of the real config.
+HOOK="$(dirname "$0")/sessionstart-heal-settings.sh"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+CANON="$TMP/repo/settings.json"
+LIVE="$TMP/root/settings.json"
+fail=0
+ok(){ echo "ok   $1"; }
+bad(){ echo "FAIL $1 ($2)"; fail=1; }
+
+setup(){ rm -rf "$TMP/repo" "$TMP/root"; mkdir -p "$TMP/repo" "$TMP/root"; }
+run(){ CLAUDE_SETUP_REPO="$TMP/repo" CLAUDE_CONFIG_DIR="$TMP/root" bash "$HOOK" >/dev/null 2>&1; }
+
+# T1: LIVE already a symlink to CANON -> no-op, CANON untouched
+setup
+printf '{"effortLevel":"xhigh"}' > "$CANON"
+ln -s "$CANON" "$LIVE"
+run
+{ [ -L "$LIVE" ] && [ "$(readlink "$LIVE")" = "$CANON" ]; } && ok "t1 intact symlink left alone" || bad "t1 symlink" "$(ls -l "$LIVE")"
+[ "$(jq -r '.effortLevel' "$CANON")" = "xhigh" ] && ok "t1 canon untouched" || bad "t1 canon" "$(cat "$CANON")"
+
+# T2: real-file clobber (dropped effortLevel + a, changed model, added b) -> merge + re-symlink
+setup
+printf '{"effortLevel":"xhigh","model":"opus","a":1}' > "$CANON"
+printf '{"model":"sonnet","b":2}' > "$LIVE"   # real file, not symlink
+run
+{ [ -L "$LIVE" ] && [ "$(readlink "$LIVE")" = "$CANON" ]; } && ok "t2 re-symlinked" || bad "t2 symlink" "$(ls -l "$LIVE")"
+[ "$(jq -r '.effortLevel' "$CANON")" = "xhigh" ] && ok "t2 repo-only key restored" || bad "t2 effortLevel" "$(cat "$CANON")"
+[ "$(jq -r '.model' "$CANON")" = "sonnet" ] && ok "t2 live value wins on overlap" || bad "t2 model" "$(cat "$CANON")"
+[ "$(jq -r '.b' "$CANON")" = "2" ] && ok "t2 live-new key added" || bad "t2 b" "$(cat "$CANON")"
+[ "$(jq -r '.a' "$CANON")" = "1" ] && ok "t2 repo-only key a preserved" || bad "t2 a" "$(cat "$CANON")"
+
+# T3: broken symlink -> re-symlink to CANON (no merge)
+setup
+printf '{"effortLevel":"xhigh"}' > "$CANON"
+ln -s "$TMP/gone.json" "$LIVE"   # dangling
+run
+{ [ -L "$LIVE" ] && [ "$(readlink "$LIVE")" = "$CANON" ]; } && ok "t3 broken symlink re-pointed" || bad "t3 symlink" "$(ls -l "$LIVE")"
+
+# T4: CANON missing -> exit 0, LIVE untouched
+setup
+printf '{"x":1}' > "$LIVE"   # real file, no canon
+run; rc=$?
+[ "$rc" -eq 0 ] && ok "t4 exit 0 with no canon" || bad "t4 rc" "$rc"
+{ [ -f "$LIVE" ] && [ ! -L "$LIVE" ]; } && ok "t4 live untouched" || bad "t4 live" "$(ls -l "$LIVE")"
+
+# T5: resolving symlink to a NON-canon target (work->personal chain) -> left alone
+setup
+printf '{"effortLevel":"xhigh"}' > "$CANON"
+printf '{"intermediate":true}' > "$TMP/other.json"
+ln -s "$TMP/other.json" "$LIVE"
+run
+{ [ -L "$LIVE" ] && [ "$(readlink "$LIVE")" = "$TMP/other.json" ]; } && ok "t5 resolving symlink left alone" || bad "t5 symlink" "$(ls -l "$LIVE")"
+
+# t: REPO fallback resolves through a symlinked hooks dir to the REPO root,
+# not to the symlink's parent. Extracts the shipped assignment line and
+# evaluates it from a symlinked path, which is how the hook is really invoked.
+mkdir -p "$TMP/realrepo/hooks" "$TMP/link"
+ln -s "$TMP/realrepo/hooks" "$TMP/link/hooks"
+LINE=$(grep -m1 '^REPO=' "$HOOK")
+{ printf '#!/bin/sh\n%s\nprintf %%s "$REPO"\n' "$LINE"; } > "$TMP/realrepo/hooks/probe.sh"
+want=$(CDPATH= cd -P "$TMP/realrepo" && pwd)
+got=$(env -u CLAUDE_SETUP_REPO sh "$TMP/link/hooks/probe.sh")
+[ "$got" = "$want" ] && ok "REPO fallback resolves through symlink to repo root" \
+  || bad "REPO symlink fallback" "got=$got want=$want"
+
+echo
+[ "$fail" -eq 0 ] && echo "ALL PASS" || echo "SOME FAILED"
+exit "$fail"

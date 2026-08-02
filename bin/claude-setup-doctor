@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# claude-setup-doctor — verify the live install matches the repo.
+#
+# Checks symlink integrity, hook permissions, JSON validity, MCP availability,
+# settings cascade, marketplace reachability. Reports PASS/WARN/FAIL per check;
+# exits non-zero only on FAIL.
+
+set -uo pipefail
+
+# Resolve real script location even when invoked via a symlinked parent dir
+# (e.g. ~/.claude/bin is a symlink to repo/bin — `pwd` returns the logical
+# path, so use `cd -P` / `pwd -P` to get the physical repo root).
+REPO="$(cd -P "$(dirname "$0")/.." && pwd -P)"
+DEST="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+PASS=0; WARN=0; FAIL=0
+
+pass()  { printf '  \033[32mPASS\033[0m  %s\n' "$1"; PASS=$((PASS+1)); }
+warn()  { printf '  \033[33mWARN\033[0m  %s\n' "$1"; WARN=$((WARN+1)); }
+fail()  { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; FAIL=$((FAIL+1)); }
+group() { printf '\n\033[1m%s\033[0m\n' "$1"; }
+
+group "1. Symlinks ($DEST → $REPO)"
+for entry in CLAUDE.md .mcp.json settings.json statusline.sh rules skills hooks agents; do
+    dst="$DEST/$entry"; src="$REPO/$entry"
+    if [ ! -e "$src" ]; then
+        warn "$entry not in repo (skipping)"
+        continue
+    fi
+    if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then
+        pass "$entry → repo"
+    elif [ -L "$dst" ]; then
+        fail "$entry symlink points elsewhere: $(readlink "$dst")"
+    elif [ -e "$dst" ]; then
+        fail "$entry exists as real file (should be symlink) — run install.sh"
+    else
+        fail "$entry missing in $DEST — run install.sh"
+    fi
+done
+
+group "2. Hook scripts executable"
+for h in "$REPO"/hooks/*.sh; do
+    [ -f "$h" ] || continue
+    if [ -x "$h" ]; then pass "$(basename "$h") +x"
+    else fail "$(basename "$h") not executable — run install.sh"; fi
+done
+
+group "3. JSON validity"
+if command -v jq >/dev/null 2>&1; then
+    for f in "$REPO"/.mcp.json "$REPO"/settings.json; do
+        if jq empty "$f" >/dev/null 2>&1; then pass "$(basename "$f")"
+        else fail "$(basename "$f") is malformed JSON"; fi
+    done
+else
+    warn "jq not installed — cannot validate JSON"
+fi
+
+group "4. Settings cascade"
+SETTINGS="$DEST/settings.json"
+if [ ! -f "$SETTINGS" ]; then
+    fail "$SETTINGS missing"
+else
+    AUTO_COMPACT=$(jq -r '.autoCompactWindow // "unset"' "$SETTINGS" 2>/dev/null)
+    EFFORT=$(jq -r '.effortLevel // "unset"' "$SETTINGS" 2>/dev/null)
+    pass "autoCompactWindow = $AUTO_COMPACT, effortLevel = $EFFORT"
+    if [ -f "$DEST/settings.local.json" ]; then
+        OVR=$(jq -r 'keys[]' "$DEST/settings.local.json" 2>/dev/null | tr '\n' ' ')
+        pass "settings.local.json overrides: $OVR"
+    fi
+fi
+
+group "5. MCP commands resolvable"
+if command -v jq >/dev/null 2>&1 && [ -f "$REPO/.mcp.json" ]; then
+    while IFS= read -r cmd; do
+        if command -v "$cmd" >/dev/null 2>&1; then pass "MCP command on PATH: $cmd"
+        else warn "MCP command NOT on PATH: $cmd (set up the binary or remove the entry)"; fi
+    done < <(jq -r '.mcpServers | to_entries[] | .value.command' "$REPO/.mcp.json" 2>/dev/null | sort -u)
+fi
+
+group "6. Repo git state"
+cd "$REPO"
+if [ -z "$(git status --porcelain 2>/dev/null)" ]; then pass "working tree clean"
+else warn "uncommitted changes in repo (commit them — there is no autopush)"; fi
+
+UPSTREAM=$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null)
+if [ -n "$UPSTREAM" ]; then
+    AHEAD=$(git rev-list --count "$UPSTREAM..HEAD" 2>/dev/null || echo 0)
+    BEHIND=$(git rev-list --count "HEAD..$UPSTREAM" 2>/dev/null || echo 0)
+    [ "$AHEAD" -eq 0 ] && [ "$BEHIND" -eq 0 ] && pass "in sync with $UPSTREAM" || warn "$AHEAD ahead, $BEHIND behind $UPSTREAM"
+fi
+
+group "7. Marketplace reachability (extraKnownMarketplaces)"
+if command -v jq >/dev/null 2>&1; then
+    # Branch on source type: github → API reachability; directory → local path
+    # must exist (a directory-source marketplace has no repo, so the old
+    # github.com// assumption produced a spurious FAIL).
+    while IFS=$'\t' read -r name type locator; do
+        case "$type" in
+            github)
+                if ! command -v gh >/dev/null 2>&1; then warn "$name → github/$locator (gh not installed, skipped)"
+                elif [ -z "$locator" ]; then warn "$name → github source missing repo"
+                elif gh api "repos/$locator" >/dev/null 2>&1; then pass "$name → github.com/$locator reachable"
+                else fail "$name → github.com/$locator NOT reachable"; fi
+                ;;
+            directory)
+                if [ -z "$locator" ]; then warn "$name → directory source missing path"
+                elif [ -d "$locator" ]; then pass "$name → directory $locator exists"
+                else fail "$name → directory $locator MISSING"; fi
+                ;;
+            *) warn "$name → unknown marketplace source type: ${type:-none}" ;;
+        esac
+    done < <(jq -r '.extraKnownMarketplaces // {} | to_entries[] | "\(.key)\t\(.value.source.source // "?")\t\(.value.source.repo // .value.source.path // "")"' "$SETTINGS" 2>/dev/null)
+fi
+
+printf '\n\033[1mSummary:\033[0m \033[32m%d pass\033[0m, \033[33m%d warn\033[0m, \033[31m%d fail\033[0m\n' "$PASS" "$WARN" "$FAIL"
+exit "$FAIL"

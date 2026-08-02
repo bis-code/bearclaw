@@ -1,0 +1,33 @@
+.DS_Store
+*.swp
+*.swo
+*~
+*.bak
+__pycache__/
+
+# Machine-specific runtime state — never tracked
+policy-limits.json
+plugins/
+backups/
+.leann/
+
+# Your personal persona — never tracked
+rules/about-me.local.md
+
+# Repo-local memory tier (per-project; never committed here)
+/.claude/memory/
+
+# Phase-2 memory capture staging (machine-local; never committed)
+_pending/
+_usage/
+
+# Native worktree dir (harness-managed)
+/.claude/worktrees/
+
+# Your own global memory content. The scaffolding (README/MEMORY.md/ERRORS.md)
+# IS tracked; everything you write into it is not. Delete these two lines if you
+# want to version your memory in your own fork.
+memory-global/*.md
+!memory-global/README.md
+!memory-global/MEMORY.md
+!memory-global/ERRORS.md
