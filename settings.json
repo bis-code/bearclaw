@@ -80,7 +80,6 @@
       "Bash(rm -rf $HOME:*)",
       "Bash(rm -rf /etc:*)",
       "Bash(rm -rf /var/lib/docker:*)",
-      "Bash(rm -rf /opt/homelab:*)",
       "Bash(sudo:*)",
       "Bash(npx prisma migrate reset:*)",
       "Bash(npx prisma db push --force-reset:*)",

@@ -67,8 +67,8 @@ A request to "fix X" is a license to fix X — **not** to touch adjacent code.
 
 - Local clones, ORM/LSP caches, and hand-maintained files (handoffs, memory) are
   **high-staleness**. Before acting on them, verify against the live source.
-- SSH the homelab before infra audits; trust `go build ./...` over a gopls cache after a
-  merge; grep actual values from code rather than citing a handoff/memory entry.
+- SSH the actual host before infra audits; trust `go build ./...` over a gopls cache
+  after a merge; grep actual values from code rather than citing a handoff/memory entry.
 
 ## Verification pairing
 <!-- Provenance: June 2026 audit — only 20% verification rate before branch completion.
