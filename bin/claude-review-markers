@@ -1,0 +1,25 @@
+#!/bin/sh
+# claude-review-markers — list REVIEW(claude): markers in the git-tracked tree
+# as a JSON worklist, for the address-review-comments skill (marker mode).
+#
+# Read-only. Respects .gitignore (git grep searches tracked files only). Matches
+# the tag only when it follows a comment leader (//, ///, #, --, <!--, /* */, ;)
+# — so the tag quoted in prose/docs ("the `REVIEW(claude):` marker") is ignored.
+# Output: JSON array [{file, line, instruction}]; [] when not in a repo / none.
+#
+# Usage: claude-review-markers [<pathspec>...]   (optional path scope)
+
+set -e
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { printf '[]\n'; exit 0; }
+
+# Leader-anchored: a comment-leader char, optional blanks, then the tag.
+git grep -nE '[/#<!*;-][[:blank:]]*REVIEW\(claude\):' -- "$@" 2>/dev/null | jq -R -s '
+  split("\n")
+  | map(select(length > 0))
+  | map(capture("^(?<file>[^:]+):(?<line>[0-9]+):(?<rest>.*)$"))
+  | map(.line |= tonumber)
+  | map(.instruction = ((.rest | capture("REVIEW\\(claude\\):[ \t]*(?<i>.*)$").i) // ""
+                        | gsub("[ \t]+$"; "") | gsub("-->[ \t]*$"; "") | gsub("\\*/[ \t]*$"; "") | gsub("[ \t]+$"; "")))
+  | map({file, line, instruction})
+' || printf '[]\n'

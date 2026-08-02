@@ -1,0 +1,78 @@
+#!/bin/sh
+# claude-mirror-tooling — mirror shared Claude tooling from one config root into
+# another, so a second CLAUDE_CONFIG_DIR (e.g. a separate work subscription at
+# ~/.claude-work) gets the same skills/agents/commands as your primary root.
+#
+# Account-agnostic by design: it mirrors only tooling DIRECTORIES
+# (rules, hooks, agents, bin, commands, memory-global, skills) and NEVER touches
+# files (settings.json, .mcp.json, CLAUDE.md, statusline.sh, auth/runtime) — so
+# each root keeps its own subscription/auth and its own MCP set.
+#
+#   - rules/hooks/agents/bin/commands/memory-global -> whole-dir symlink
+#     (created only if absent; an existing real dir or foreign symlink is left
+#     untouched, so nothing is clobbered)
+#   - skills -> ADDITIVE: each src skill is symlinked in only if absent, so
+#     root-specific skills (e.g. work-standup) are preserved
+#
+# Usage:  claude-mirror-tooling <src-config-root> <dst-config-root>
+#   e.g.  claude-mirror-tooling ~/.claude ~/.claude-work
+#
+# The "which roots" knowledge stays in your shell (the cl-w / cl-p aliases) —
+# this tool is just the mechanism. Re-run after adding skills/agents to propagate.
+
+set -e
+
+SRC="$1"; DST="$2"
+if [ -z "$SRC" ] || [ -z "$DST" ]; then
+    echo "usage: claude-mirror-tooling <src-config-root> <dst-config-root>" >&2
+    echo "  e.g. claude-mirror-tooling ~/.claude ~/.claude-work" >&2
+    exit 2
+fi
+[ -d "$SRC" ] || { echo "src config root not found: $SRC" >&2; exit 1; }
+mkdir -p "$DST"
+
+# Whole-dir tooling: symlink dst/<dir> -> src/<dir> when absent; never clobber.
+link_dir() {
+    name="$1"; src="$SRC/$name"; dst="$DST/$name"
+    [ -e "$src" ] || return 0
+    if [ -L "$dst" ]; then
+        if [ "$(readlink "$dst")" = "$src" ]; then echo "ok   $name"; else echo "skip $name (foreign symlink -> $(readlink "$dst"))"; fi
+        return 0
+    fi
+    if [ -e "$dst" ]; then echo "skip $name (real dir present — not clobbering)"; return 0; fi
+    ln -s "$src" "$dst" && echo "link $name"
+}
+
+# Global memory: per-root, NOT shared. Each config root keeps its OWN global
+# memory tier so personal-context facts never bleed across roots (e.g. into a
+# work subscription). Seed an empty own dir in dst if absent; never clobber.
+# Pair this with GLOBAL_MEM_DIR + GLOBAL_MEM_INDEX in the dst root's settings.json
+# (this tool never touches settings — see the NOTE it prints).
+seed_memory_global() {
+    dst="$DST/memory-global"
+    if [ -e "$dst" ] || [ -L "$dst" ]; then echo "ok   memory-global (present — per-root, not shared)"; return 0; fi
+    idx="$(basename "$DST" | sed 's/^\.//')-memory-global"   # ~/.claude-work -> claude-work-memory-global
+    mkdir -p "$dst"
+    printf '<!-- Per-root global memory index. One line per entry: `- [Title](slug.md) - hook`.\nIsolated per config root: the memory hooks resolve this tier from CLAUDE_CONFIG_DIR\n(%s -> index %s) automatically; no settings.json change is needed. -->\n' "$DST" "$idx" > "$dst/MEMORY.md"
+    printf '# ERRORS - failure journal (per-root global tier)\n' > "$dst/ERRORS.md"
+    echo "seed memory-global (own dir -> index $idx; hooks resolve it from CLAUDE_CONFIG_DIR)"
+}
+
+# Skills: additive — symlink each src skill in only if not already present.
+mirror_skills() {
+    src="$SRC/skills"; dst="$DST/skills"
+    [ -d "$src" ] || return 0
+    if [ -L "$dst" ]; then echo "ok   skills (existing symlink, left as-is)"; return 0; fi
+    mkdir -p "$dst"
+    for d in "$src"/*/; do
+        [ -d "$d" ] || continue
+        n=$(basename "$d")
+        if [ -e "$dst/$n" ] || [ -L "$dst/$n" ]; then echo "ok   skills/$n (present)"; else ln -s "$src/$n" "$dst/$n" && echo "link skills/$n"; fi
+    done
+}
+
+for d in rules hooks agents bin commands; do link_dir "$d"; done
+mirror_skills
+seed_memory_global
+
+echo "done. tooling mirrored $SRC -> $DST (account files untouched)."

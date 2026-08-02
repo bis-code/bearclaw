@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "deep-think": {
+      "command": "mcp-deep-think",
+      "args": [],
+      "alwaysLoad": true
+    }
+  }
+}

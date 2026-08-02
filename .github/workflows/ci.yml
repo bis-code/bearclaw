@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats and shellcheck
+        run: sudo apt-get update && sudo apt-get install -y bats shellcheck jq
+
+      - name: JSON validity
+        run: git ls-files '*.json' | xargs -I{} jq empty {}
+
+      - name: Shell syntax
+        run: git ls-files '*.sh' | xargs -I{} bash -n {}
+
+      - name: Shellcheck (advisory)
+        run: git ls-files '*.sh' | xargs -r shellcheck -S warning || true
+        continue-on-error: true
+
+      - name: Identity gate
+        run: ./scripts/check-no-identity.sh
+
+      - name: Test suite
+        run: ./scripts/test-all.sh
+
+      - name: Install dry-run
+        run: ./install.sh --dry-run "$RUNNER_TEMP/claude"
+
+      - name: Install and uninstall round-trip
+        run: |
+          ./install.sh "$RUNNER_TEMP/claude-real"
+          test -L "$RUNNER_TEMP/claude-real/settings.json"
+          ./install.sh --uninstall "$RUNNER_TEMP/claude-real"
+          test ! -L "$RUNNER_TEMP/claude-real/settings.json"
