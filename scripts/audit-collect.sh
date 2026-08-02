@@ -100,9 +100,15 @@ collect_config() {
   note
 
   note "## Stale backups (*.bak.*)"
-  local b
+  local b mtime
   while IFS= read -r b; do
-    [ -n "$b" ] && note "- $b ($(stat -f '%Sm' -t '%Y-%m-%d' "$b" 2>/dev/null))"
+    [ -n "$b" ] || continue
+    # BSD stat's -f FORMAT and GNU stat's -f (--file-system) collide: on GNU,
+    # the BSD invocation below still exits 1 but leaks filesystem-mode output
+    # to stdout, so the fallback must be gated on its exit code, not `||`.
+    mtime="$(stat -f '%Sm' -t '%Y-%m-%d' "$b" 2>/dev/null)"
+    if [ $? -ne 0 ]; then mtime="$(stat -c '%y' "$b" 2>/dev/null | cut -d' ' -f1)"; fi
+    note "- $b ($mtime)"
   done < <(find "$CLAUDE_HOME" "$CLAUDE_WORK_HOME" -maxdepth 1 -name '*.bak.*' -type f 2>/dev/null)
   note
 
