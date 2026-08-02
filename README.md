@@ -1,5 +1,10 @@
 # bearclaw
 
+![bearclaw](docs/banner.jpg)
+
+*Bear from Obsession; Claw from Captain Claw, the game that took most of my
+childhood.*
+
 A batteries-included, user-scope [Claude Code](https://claude.com/claude-code)
 config: 16 subagents, 14 skills, 20 hook scripts (19 wired as lifecycle
 hooks), a three-tier memory system that grows as you work, and a safety guard
