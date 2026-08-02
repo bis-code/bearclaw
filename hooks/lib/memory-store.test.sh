@@ -46,4 +46,31 @@ memstore_init
 [ -d "$MEMSTORE_DONE" ]    || { echo "FAIL: done dir missing after second init"; exit 1; }
 [ -d "$MEMSTORE_USAGE" ]   || { echo "FAIL: usage dir missing after second init"; exit 1; }
 
+# --- retention: the audit trail must stay bounded -------------------------
+# done/ grew to 490 pointers (6 weeks, ~11/day) with nothing pruning it, and
+# orphaned signal files accumulated alongside. Retention is age-based so the
+# recent audit trail survives.
+memstore_init
+touch "$MEMSTORE_DONE/old.json" "$MEMSTORE_DONE/new.json"
+touch "$MEMSTORE_SIGNALS/old.jsonl" "$MEMSTORE_SIGNALS/new.jsonl"
+touch -t 202601010000 "$MEMSTORE_DONE/old.json" "$MEMSTORE_SIGNALS/old.jsonl"
+KEEP=$(memstore_enqueue_raw '{"session":"pending"}')
+touch -t 202601010000 "$KEEP"
+
+memstore_prune_done 30
+
+[ ! -f "$MEMSTORE_DONE/old.json" ]      || { echo "FAIL: stale done pointer not pruned"; exit 1; }
+[ -f "$MEMSTORE_DONE/new.json" ]        || { echo "FAIL: recent done pointer must be kept"; exit 1; }
+[ ! -f "$MEMSTORE_SIGNALS/old.jsonl" ]  || { echo "FAIL: stale signal file not pruned"; exit 1; }
+[ -f "$MEMSTORE_SIGNALS/new.jsonl" ]    || { echo "FAIL: recent signal file must be kept"; exit 1; }
+# Pending work is never pruned, however old -- it is undrained, not audit.
+[ -f "$KEEP" ] || { echo "FAIL: pending raw capture must NEVER be pruned by age"; exit 1; }
+
+# A bad or missing retention value must not delete anything.
+touch "$MEMSTORE_DONE/old2.json"; touch -t 202601010000 "$MEMSTORE_DONE/old2.json"
+memstore_prune_done "abc"
+[ -f "$MEMSTORE_DONE/old2.json" ] || { echo "FAIL: invalid DAYS must be a no-op, not a delete"; exit 1; }
+memstore_prune_done 0
+[ -f "$MEMSTORE_DONE/old2.json" ] || { echo "FAIL: DAYS=0 must be a no-op, not a delete"; exit 1; }
+
 echo "PASS"
