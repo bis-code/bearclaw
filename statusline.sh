@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Claude Code statusline plugin — slim single-line design
-# Output: Fable 5 ◑ · ━━━─────── 34% · mac-setup ⎇ master +12 -3 · 5h 42%⇣8% 2h · 7d 61% 3d
+# Output: Fable 5 ◑ · ━━━─────── 34% · my-project ⎇ master +12 -3 · 5h 42%⇣8% 2h · 7d 61% 3d
 
 # Disable glob expansion so unquoted vars with wildcards (e.g. DIR paths)
 # are never accidentally expanded into filename lists.
