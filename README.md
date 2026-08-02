@@ -1,21 +1,21 @@
 # bearclaw
 
+[![ci](https://github.com/bis-code/bearclaw/actions/workflows/ci.yml/badge.svg)](https://github.com/bis-code/bearclaw/actions/workflows/ci.yml)
+
 ![bearclaw](docs/banner.jpg)
 
 *Bear from Obsession; Claw from Captain Claw, the game that took most of my
 childhood.*
 
-A batteries-included, user-scope [Claude Code](https://claude.com/claude-code)
-config: 16 subagents, 14 skills, 20 hook scripts (19 wired as lifecycle
-hooks), a three-tier memory system that grows as you work, and a safety guard
-that blocks catastrophic deletes regardless of permission mode. The repo *is*
-the config — `install.sh`
-symlinks it into `~/.claude/`, so editing live = editing the repo. Commit
-drift yourself; `bin/claude-setup-doctor` warns when the tree is dirty.
+A complete user-scope [Claude Code](https://claude.com/claude-code) config:
+16 subagents, 14 skills, 20 hook scripts (19 wired as lifecycle hooks), a
+three-tier memory system that grows as you work, and a safety guard that
+blocks catastrophic deletes regardless of permission mode.
 
-Companion project: [bis-code/claude-toolkit](https://github.com/bis-code/claude-toolkit)
-is separate Go tooling for Claude Code — this repo is the config layer, that
-one is compiled binaries. They don't overlap.
+The repo *is* the config. `install.sh` symlinks it into `~/.claude/`, so
+editing the live config edits the repo and your changes stay version
+controlled. Commit drift yourself; `bin/claude-setup-doctor` warns when the
+tree is dirty.
 
 ## Install
 
