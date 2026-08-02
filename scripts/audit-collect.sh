@@ -9,14 +9,12 @@
 #
 # Roots are overridable via env (for tests):
 #   CLAUDE_HOME           (default $HOME/.claude)
-#   CLAUDE_WORK_HOME      (default $HOME/.claude-work)
 #   SETUP_REPO            (default: resolved from this script's location)
 #   CLAUDE_PROJECT_ROOTS  (default "$HOME", space-separated scan roots)
 #   MEMORY_DIR            (default the claude-setup auto-memory dir)
 #   WINDOW_DAYS           (default 30)   MAX_HITS (default 50)
 
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
-CLAUDE_WORK_HOME="${CLAUDE_WORK_HOME:-$HOME/.claude-work}"
 SETUP_REPO="${SETUP_REPO:-$(CDPATH= cd -P "$(dirname "$0")" && cd .. && pwd)}"
 REPO_SCAN_ROOTS="${CLAUDE_PROJECT_ROOTS:-$HOME}"
 WINDOW_DAYS="${WINDOW_DAYS:-30}"
@@ -74,28 +72,16 @@ collect_config() {
   done | sort -u | sed 's|^|- |' || warn "command scan failed"
   note
 
-  note "## Symlink integrity (config roots)"
-  local root link target
-  for root in "$CLAUDE_HOME" "$CLAUDE_WORK_HOME"; do
-    [ -d "$root" ] || { warn "config root missing: $root"; continue; }
+  note "## Symlink integrity (config root)"
+  local link target
+  if [ -d "$CLAUDE_HOME" ]; then
     while IFS= read -r link; do
       target="$(readlink "$link")"
       if [ -e "$link" ]; then note "- OK   $link -> $target"
       else note "- DEAD $link -> $target"; fi
-    done < <(find "$root" -maxdepth 1 -type l 2>/dev/null | sort)
-  done
-  note
-
-  note "## .claude.json top-level key divergence"
-  if [ -f "$CLAUDE_HOME/.claude.json" ] && [ -f "$CLAUDE_WORK_HOME/.claude.json" ]; then
-    if diff <(jq -S 'keys' "$CLAUDE_HOME/.claude.json" 2>/dev/null) \
-            <(jq -S 'keys' "$CLAUDE_WORK_HOME/.claude.json" 2>/dev/null) >/dev/null; then
-      note "- top-level keys identical"
-    else
-      note "- DIVERGENT top-level keys (run diff to inspect)"
-    fi
+    done < <(find "$CLAUDE_HOME" -maxdepth 1 -type l 2>/dev/null | sort)
   else
-    warn ".claude.json absent in one or both roots"
+    warn "config root missing: $CLAUDE_HOME"
   fi
   note
 
@@ -109,7 +95,7 @@ collect_config() {
     mtime="$(stat -f '%Sm' -t '%Y-%m-%d' "$b" 2>/dev/null)"
     if [ $? -ne 0 ]; then mtime="$(stat -c '%y' "$b" 2>/dev/null | cut -d' ' -f1)"; fi
     note "- $b ($mtime)"
-  done < <(find "$CLAUDE_HOME" "$CLAUDE_WORK_HOME" -maxdepth 1 -name '*.bak.*' -type f 2>/dev/null)
+  done < <(find "$CLAUDE_HOME" -maxdepth 1 -name '*.bak.*' -type f 2>/dev/null)
   note
 
   note "## Debris counts (entries per dir)"
@@ -293,7 +279,7 @@ collect_cost() {
   now="$(date +%s)"
   # Repos referenced by an active .mcp.json are in use even with stale commits
   # (e.g. vendored MCP servers) — collect the .mcp.json set once to exclude them.
-  mcp_files="$(for r in $REPO_SCAN_ROOTS "$CLAUDE_HOME" "$CLAUDE_WORK_HOME"; do
+  mcp_files="$(for r in $REPO_SCAN_ROOTS "$CLAUDE_HOME"; do
     find "$r" -maxdepth 5 -name '.mcp.json' -not -path '*/node_modules/*' 2>/dev/null
   done)"
   for r in $REPO_SCAN_ROOTS; do
@@ -315,24 +301,19 @@ collect_cost() {
   note
 
   note "## MCP / plugin inventory + auth state"
-  local mcp
-  for mcp in "$CLAUDE_HOME/.mcp.json" "$CLAUDE_WORK_HOME/.mcp.json"; do
-    [ -f "$mcp" ] && note "- $mcp: $(jq -r '.mcpServers // {} | keys | join(", ")' "$mcp" 2>/dev/null || echo '?')"
-  done
+  local mcp="$CLAUDE_HOME/.mcp.json"
+  [ -f "$mcp" ] && note "- $mcp: $(jq -r '.mcpServers // {} | keys | join(", ")' "$mcp" 2>/dev/null || echo '?')"
   local authcache="$CLAUDE_HOME/mcp-needs-auth-cache.json"
   [ -f "$authcache" ] && note "- needs-auth: $(jq -r 'keys | join(", ")' "$authcache" 2>/dev/null || echo '?')"
   note
 
-  note "## Enabled plugins (per config root — cross-ref for redundancy / project-scope creep)"
-  local entry st root_label
-  for entry in "$CLAUDE_HOME/settings.json|personal" "$CLAUDE_WORK_HOME/settings.json|work"; do
-    st="${entry%|*}"; root_label="${entry##*|}"
-    if [ -f "$st" ]; then
-      note "- ${root_label}: $(jq -r '.enabledPlugins // {} | to_entries | map(select(.value)) | map(.key) | join(", ")' "$st" 2>/dev/null || echo '?')"
-    else
-      warn "no settings.json at $st (${root_label})"
-    fi
-  done
+  note "## Enabled plugins"
+  local st="$CLAUDE_HOME/settings.json"
+  if [ -f "$st" ]; then
+    note "- $(jq -r '.enabledPlugins // {} | to_entries | map(select(.value)) | map(.key) | join(", ")' "$st" 2>/dev/null || echo '?')"
+  else
+    warn "no settings.json at $st"
+  fi
   note
 
   # Prescribed-vs-USED: a configured MCP server with 0 actual tool-calls in the
@@ -341,13 +322,12 @@ collect_cost() {
   note "## MCP tools — prescribed vs USED (actual tool-calls, last ${WINDOW_DAYS}d)"
   local tfiles srv cnt
   tfiles="$(find "$CLAUDE_HOME/projects" -name '*.jsonl' -mtime "-${WINDOW_DAYS}" 2>/dev/null)"
-  for mcp in "$CLAUDE_HOME/.mcp.json" "$CLAUDE_WORK_HOME/.mcp.json"; do
-    [ -f "$mcp" ] || continue
+  if [ -f "$mcp" ]; then
     for srv in $(jq -r '.mcpServers // {} | keys[]' "$mcp" 2>/dev/null); do
       cnt=$(while IFS= read -r f; do [ -n "$f" ] && grep -hoF "\"name\":\"mcp__${srv}__" "$f" 2>/dev/null; done <<< "$tfiles" | wc -l | tr -d ' ')
       note "- ${srv}: ${cnt} calls"
     done
-  done
+  fi
   note
 
   note "## leann index health (stale indexes give degraded/garbage results)"

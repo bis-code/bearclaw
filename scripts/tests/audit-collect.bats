@@ -6,10 +6,9 @@ setup() {
   FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/audit-fix.XXXXXX")"
   mkdir -p "$FIXTURE/setup/agents" "$FIXTURE/setup/skills/foo" \
            "$FIXTURE/setup/rules" "$FIXTURE/setup/hooks" \
-           "$FIXTURE/home" "$FIXTURE/work-home"
+           "$FIXTURE/home"
   export SETUP_REPO="$FIXTURE/setup"
   export CLAUDE_HOME="$FIXTURE/home"
-  export CLAUDE_WORK_HOME="$FIXTURE/work-home"
   export CLAUDE_PROJECT_ROOTS="$FIXTURE"
   export WINDOW_DAYS=30 MAX_HITS=50
   source "$BATS_TEST_DIRNAME/../audit-collect.sh"

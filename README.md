@@ -167,6 +167,18 @@ Seven checks: symlink integrity, hook script executable bits, JSON validity,
 settings cascade, MCP commands resolvable, repo git state, marketplace
 reachability. Exits non-zero only on FAIL.
 
+## Mirroring to a second config root
+
+`bin/claude-mirror-tooling <src-config-root> <dst-config-root>` mirrors shared
+tooling (`rules`, `hooks`, `agents`, `bin`, `commands`, `skills`) from one
+`CLAUDE_CONFIG_DIR` into another via symlinks, without touching either root's
+account files (`settings.json`, `.mcp.json`, `CLAUDE.md`, auth). Useful if you
+run more than one Claude Code config root (e.g. a second account or machine
+profile) and want both to see the same tooling. Each root keeps its own
+global memory tier — `seed_memory_global()` seeds an empty, unshared
+`memory-global/` in the destination rather than symlinking it. Re-run after
+adding skills/agents to propagate; see `bin/claude-mirror-tooling.test.sh`.
+
 ## Pre-push lint
 
 `install.sh` symlinks `scripts/pre-push.sh` into `.git/hooks/pre-push` (won't

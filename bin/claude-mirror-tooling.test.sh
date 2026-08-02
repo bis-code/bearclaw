@@ -12,9 +12,9 @@ mkdir -p "$SRC"/agents "$SRC"/commands "$SRC"/bin "$SRC"/rules "$SRC"/hooks "$SR
 printf 'cr' > "$SRC/agents/code-reviewer.md"
 printf 'h'  > "$SRC/skills/handoff/SKILL.md"
 
-# dst: work-specific skill + a pre-existing REAL commands dir (preserve) + account files (untouched)
-mkdir -p "$DST"/skills/work-standup "$DST"/commands
-printf 'WORK' > "$DST/skills/work-standup/SKILL.md"
+# dst: root-specific skill + a pre-existing REAL commands dir (preserve) + account files (untouched)
+mkdir -p "$DST"/skills/other-standup "$DST"/commands
+printf 'WORK' > "$DST/skills/other-standup/SKILL.md"
 printf 'WCMD' > "$DST/commands/work-cmd.md"
 ln -s /work/.mcp.json "$DST/.mcp.json"
 printf 'SET' > "$DST/settings.json"
@@ -30,10 +30,10 @@ OUT=$(sh "$BIN" "$SRC" "$DST" 2>&1)
 # pre-existing REAL commands dir preserved (not clobbered)
 { [ ! -L "$DST/commands" ] && [ "$(cat "$DST/commands/work-cmd.md")" = "WCMD" ]; } && ok "real commands dir preserved" || bad "commands clobbered" "$OUT"
 
-# skills additive: personal linked, work-specific preserved, dir stays real
+# skills additive: shared skills linked, root-specific skill preserved, dir stays real
 [ -L "$DST/skills/handoff" ] && ok "skills/handoff linked (additive)" || bad "handoff" "$OUT"
 [ -L "$DST/skills/cost-report" ] && ok "skills/cost-report linked" || bad "cost-report" "$OUT"
-[ "$(cat "$DST/skills/work-standup/SKILL.md")" = "WORK" ] && ok "work-specific skill preserved" || bad "work-standup" "$OUT"
+[ "$(cat "$DST/skills/other-standup/SKILL.md")" = "WORK" ] && ok "root-specific skill preserved" || bad "other-standup" "$OUT"
 [ ! -L "$DST/skills" ] && ok "dst/skills stays a real dir" || bad "skills symlinked" "$OUT"
 
 # global memory: per-root OWN dir (NOT a shared symlink to src) so nothing bleeds across roots

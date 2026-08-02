@@ -31,4 +31,26 @@ if [ -n "$hits" ]; then
   exit 1
 fi
 echo "ok: no identity leaks"
+
+# Second, separate check: no work/personal config-root split. This repo is
+# user-scope config for a computer — it has no folder-scope concept and must
+# not encode one (e.g. a second "work" config root distinct from the primary
+# one). Matches the concept via the naming pattern the split actually used
+# (CLAUDE_WORK_HOME, ~/.claude-work, claude-work-memory-global, the cl-w
+# alias) — NOT the substring "work" alone, which also appears in legitimate
+# words this repo uses: workflow, workspace, worktree, network, framework,
+# workaround, working. -i because the leaked forms varied in case
+# (CLAUDE_WORK_HOME vs claude-work).
+CONCEPT_BANNED='claude[_-]work|\bcl-w\b'
+
+concept_hits=$(git ls-files -z \
+  | xargs -0 grep -nEIHi "$CONCEPT_BANNED" 2>/dev/null \
+  | grep -v '^scripts/check-no-identity.sh:' || true)
+
+if [ -n "$concept_hits" ]; then
+  echo "work/personal split leak — these tracked files encode a second work config root:" >&2
+  printf '%s\n' "$concept_hits" >&2
+  exit 1
+fi
+echo "ok: no work/personal config-root split"
 exit 0
