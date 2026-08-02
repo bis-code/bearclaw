@@ -331,14 +331,21 @@ collect_cost() {
   note
 
   note "## leann index health (stale indexes give degraded/garbage results)"
-  local idxdir age nowts
+  local idxdir age nowts mtime
   nowts="$(date +%s)"
   for r in $REPO_SCAN_ROOTS; do
-    # maxdepth 7: work indexes sit at depth 6 (work/coding/backend/<repo>/.leann/indexes/<name>)
+    # maxdepth 7: a nested index can sit at depth 6
+    # (<root>/<group>/<area>/<repo>/.leann/indexes/<name>)
     find "$r" -maxdepth 7 -type d -path '*/.leann/indexes/*' -not -path '*/node_modules/*' 2>/dev/null
   done | while IFS= read -r idxdir; do
     [ -n "$idxdir" ] || continue
-    age=$(( (nowts - $(stat -f %m "$idxdir" 2>/dev/null || echo "$nowts")) / 86400 ))
+    # Same BSD/GNU `stat -f` collision as the stale-backups check above: on GNU
+    # the BSD form exits nonzero but still leaks filesystem-mode output to
+    # stdout, so gate the fallback on the exit code rather than on `||`.
+    mtime="$(stat -f %m "$idxdir" 2>/dev/null)"
+    if [ $? -ne 0 ]; then mtime="$(stat -c %Y "$idxdir" 2>/dev/null)"; fi
+    [ -n "$mtime" ] || mtime="$nowts"
+    age=$(( (nowts - mtime) / 86400 ))
     if [ "$age" -gt 30 ]; then note "- STALE (${age}d): $idxdir"
     else note "- ok (${age}d): $idxdir"; fi
   done
