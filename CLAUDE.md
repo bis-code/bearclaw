@@ -42,6 +42,8 @@ At the start of a new feature-branch or worktree session (not a handoff continua
 
 Invoke `handoff` (the user-scope skill at `skills/handoff/`) when assistant turns exceed ~250 (lowered from ~400 — June 2026 audit: 44% of context boundaries were still unmanaged compactions), before stepping away >2 hours, or before any session likely to cross a 17 MB / multi-day boundary. Mechanically enforced by `hooks/stop-handoff-reminder.sh`: it measures the **exact** context size from API usage (no longer a bytes heuristic) and warns at **60%**, escalating at **70%**. **Never let auto-compaction be the first context-management event** — every observed auto-compaction in the audit corpus (16/16) erased working memory mid-task and forced re-discovery.
 
+Every `/handoff` ends with a clipboard-ready next-session prompt. `/handoff-autonomously` additionally emits a `/goal` line (via the `goal-prompt` skill) so the next session runs unattended; "give the /goal prompt" alone invokes `goal-prompt` only — no handoff doc.
+
 ## Conversation Pacing
 
 When you have multiple clarifying questions, decisions to confirm, or trade-offs to surface: **walk through them ONE AT A TIME**. Ask one question, wait for the answer, lock it in, then move to the next. Do not bundle them into a single multi-part message — large lists are confusing to read and answer, especially on mobile. The only exception is when the user explicitly asks for the full list up front.
@@ -71,6 +73,6 @@ To add `~/.claude/agents` on a new machine: run `./install.sh` (it handles the s
 
 ## Skills
 
-User-maintained skills: `skills/editing-pr-descriptions/`, `skills/handoff/`, `skills/agent-self-evaluation/`, `skills/monthly-setup-audit/` (monthly read-only health-check of the whole Claude setup → a risk-grouped report you choose where to save). No orchestrator wrappers remain — natural language + `superpowers:` plus user-scope agents (above) cover the previous ralph/qa surface area.
+User-maintained skills: `skills/editing-pr-descriptions/`, `skills/handoff/`, `skills/handoff-autonomously/` (handoff + `/goal` line for an unattended next session), `skills/goal-prompt/` (writes a `/goal` condition from the embedded built-in-command docs — models don't know `/goal` natively), `skills/agent-self-evaluation/`, `skills/monthly-setup-audit/` (monthly read-only health-check of the whole Claude setup → a risk-grouped report you choose where to save). No orchestrator wrappers remain — natural language + `superpowers:` plus user-scope agents (above) cover the previous ralph/qa surface area.
 
 Plan-execution chain: after `superpowers:writing-plans` produces a plan, the documented follow-on is `superpowers:executing-plans` (≤5 small tasks) or `superpowers:subagent-driven-development` (3+ independent workstreams). Don't leave a plan dangling.

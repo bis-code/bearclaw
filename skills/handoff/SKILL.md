@@ -139,6 +139,14 @@ Read the handoff doc before responding.
 
 Keep under 10 lines. The fresh session reads the doc for detail — the prompt just points at it.
 
+Printing this prompt is part of every handoff, not an optional extra — a handoff that ends without a pasteable prompt leaves the user to write one by hand.
+
+## Autonomous next session
+
+If the user wants the next session to continue autonomously/unattended (the `handoff-autonomously` skill, or phrasing like "next session runs on its own"): after printing the clipboard prompt, invoke the **goal-prompt** skill and emit its `/goal` line as a separate second paste message (see `handoff-autonomously` for the two-message format).
+
+If the user asks only for the goal prompt ("give the /goal prompt"), use **goal-prompt** alone — no handoff doc.
+
 ## Optional: Issue Comment
 
 If the project has a GitHub issue tied to this work (check for `issue/<number>-*` branch prefix or user-mentioned issue number):
@@ -176,6 +184,7 @@ Skip this for sessions that produced no reusable lesson (the common case).
 - Decisions section empty when the session clearly made choices
 - Open Questions with no "blocked on" clause
 - Handoff longer than ~80 lines — you're summarizing, not handing off
+- Ending the handoff without printing the clipboard-ready prompt
 
 ## Self-Check
 

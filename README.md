@@ -49,7 +49,7 @@ CLAUDE.md           # user-scope context, loaded every session
 settings.json       # 10 configured plugins (8 enabled by default), 19 wired hooks, effortLevel, autoCompactWindow
 statusline.sh       # status line (model · cwd · branch · token meters)
 rules/              # canonical rules — behavioral instructions, loaded every session
-skills/             # 14 skills (handoff, memory-capture, monthly-setup-audit, roadmap, ...)
+skills/             # 16 skills (handoff, handoff-autonomously, goal-prompt, memory-capture, ...)
 agents/             # 16 named subagents (reviewers, implementers, planners)
 hooks/              # 20 hook scripts (see "Hooks" below) + hooks/lib/ (memory subsystem)
 memory-global/      # global memory tier: MEMORY.md index + ERRORS.md + one fact per file
@@ -78,15 +78,19 @@ Each language reviewer detects the project's stack (e.g. `java` → Spring vs
 Quarkus vs Vert.x) and applies general-language rules always, stack-specific
 checks only when it detects that stack.
 
-### Skills (`skills/`, 14)
+### Skills (`skills/`, 16)
 
 `address-review-comments`, `agent-self-evaluation`, `context-budget`,
-`contract-audit`, `editing-pr-descriptions`, `find-skills`, `handoff`,
-`memory-capture`, `monthly-setup-audit`, `roadmap`, `swift-actor-persistence`,
-`swift-concurrency-6-2`, `swift-protocol-di-testing`, `visual-companion`.
+`contract-audit`, `editing-pr-descriptions`, `find-skills`, `goal-prompt`,
+`handoff`, `handoff-autonomously`, `memory-capture`, `monthly-setup-audit`,
+`roadmap`, `swift-actor-persistence`, `swift-concurrency-6-2`,
+`swift-protocol-di-testing`, `visual-companion`.
 
 `handoff` and `memory-capture` are the core session-continuity pair;
 `monthly-setup-audit` is a read-only health check of this setup itself.
+`handoff-autonomously` = `handoff` + a `/goal` line (built by `goal-prompt`,
+which embeds the official `/goal` docs — models don't know the command
+natively) so the next session after `/clear` can run unattended.
 
 ### Hooks (`hooks/`, 20 scripts)
 
