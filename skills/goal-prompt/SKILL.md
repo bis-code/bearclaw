@@ -36,6 +36,10 @@ in order:
    / acceptance criteria, not from vibes. If the task wording and the
    pass/fail check name the same event ("finish X" / "tests for X pass"),
    state only the check — the task wording is context, not a second condition.
+   If the end state hands off to human verification (device testing, review),
+   it must also require the downstream artifact that verification depends on
+   — a build uploaded, a deploy live, a package published — or the goal ends
+   "complete" with nothing to verify against.
 2. **Stated check** — the command whose output proves it (`npm test` exits 0,
    `git status` clean). The evaluator only reads the transcript — the
    condition must be provable by Claude's own surfaced output.
@@ -57,6 +61,7 @@ After the block, add at most two one-line notes when they apply:
 | Vague end state ("improve the tests") | Name the measurable fact ("all tests in `test/auth` pass") |
 | Restating the task alongside its check ("finish X and tests pass") | One event, one clause — keep the check, drop the restatement |
 | Constraint asserted with no proof | Pair every constraint with the check that shows it held |
+| End state stops at a verify gate whose prerequisite artifact is never produced | Include the build/deploy/publish step the verification needs |
 | Proof the evaluator can't see (file contents never printed) | State the check whose output lands in the transcript |
 | No bound | Always append "stop after N turns" |
 | Multiple unrelated goals in one condition | One goal per session — pick the one end state, or sequence sessions |
