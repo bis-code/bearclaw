@@ -43,4 +43,10 @@ These are personal-workspace preferences. Keep them, but honestly labeled.
   Pairs with **Conversation Pacing** (CLAUDE.md): one decision at a time — don't
   bundle four unrelated questions into one card set just because the tool allows
   it.
+- **Item-lists deal as cards.** When presenting N items that each need a user
+  verdict — review findings, next steps, manual/verification steps, decisions,
+  checklist entries — don't dump a prose list and wait. Invoke the `walkthrough`
+  skill: one AskUserQuestion card per item per turn, decision log + tracker sync
+  at the end. Recognize the ask in its natural forms ("one by one", "walk me
+  through", "so I can digest") without the user having to name the tool.
 
