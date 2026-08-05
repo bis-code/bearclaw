@@ -54,6 +54,37 @@ ln -s "$TMP/other.json" "$LIVE"
 run
 { [ -L "$LIVE" ] && [ "$(readlink "$LIVE")" = "$TMP/other.json" ]; } && ok "t5 resolving symlink left alone" || bad "t5 symlink" "$(ls -l "$LIVE")"
 
+# T6: sticky-key guard — intact symlink, but canon lost effortLevel that git
+# HEAD has (write-through race) -> key restored from HEAD, other edits kept
+setup
+( cd "$TMP/repo" && git init -q && git config user.email t@t && git config user.name t )
+printf '{"effortLevel":"auto","model":"opus"}' > "$CANON"
+( cd "$TMP/repo" && git add settings.json && git commit -qm seed )
+printf '{"model":"sonnet"}' > "$CANON"   # write-through dropped effortLevel, changed model
+ln -s "$CANON" "$LIVE"
+run
+[ "$(jq -r '.effortLevel' "$CANON")" = "auto" ] && ok "t6 sticky key restored from HEAD" || bad "t6 effortLevel" "$(cat "$CANON")"
+[ "$(jq -r '.model' "$CANON")" = "sonnet" ] && ok "t6 uncommitted edit kept" || bad "t6 model" "$(cat "$CANON")"
+
+# T7: sticky key present with a CHANGED value -> left alone (only absence heals)
+setup
+( cd "$TMP/repo" && git init -q && git config user.email t@t && git config user.name t )
+printf '{"effortLevel":"auto"}' > "$CANON"
+( cd "$TMP/repo" && git add settings.json && git commit -qm seed )
+printf '{"effortLevel":"high"}' > "$CANON"
+ln -s "$CANON" "$LIVE"
+run
+[ "$(jq -r '.effortLevel' "$CANON")" = "high" ] && ok "t7 changed value untouched" || bad "t7 effortLevel" "$(cat "$CANON")"
+
+# T8: key absent in HEAD too (deliberate committed removal) -> stays absent
+setup
+( cd "$TMP/repo" && git init -q && git config user.email t@t && git config user.name t )
+printf '{"model":"opus"}' > "$CANON"
+( cd "$TMP/repo" && git add settings.json && git commit -qm seed )
+ln -s "$CANON" "$LIVE"
+run
+[ "$(jq -r 'has("effortLevel")' "$CANON")" = "false" ] && ok "t8 committed removal respected" || bad "t8 effortLevel" "$(cat "$CANON")"
+
 # t: REPO fallback resolves through a symlinked hooks dir to the REPO root,
 # not to the symlink's parent. Extracts the shipped assignment line and
 # evaluates it from a symlinked path, which is how the hook is really invoked.
