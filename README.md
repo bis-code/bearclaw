@@ -49,7 +49,7 @@ CLAUDE.md           # user-scope context, loaded every session
 settings.json       # 10 configured plugins (8 enabled by default), 19 wired hooks, effortLevel, autoCompactWindow
 statusline.sh       # status line (model · cwd · branch · token meters)
 rules/              # canonical rules — behavioral instructions, loaded every session
-skills/             # 16 skills (handoff, handoff-autonomously, goal-prompt, memory-capture, ...)
+skills/             # 17 skills (handoff, handoff-autonomously, goal-prompt, memory-capture, walkthrough, ...)
 agents/             # 16 named subagents (reviewers, implementers, planners)
 hooks/              # 20 hook scripts (see "Hooks" below) + hooks/lib/ (memory subsystem)
 memory-global/      # global memory tier: MEMORY.md index + ERRORS.md + one fact per file
@@ -78,13 +78,17 @@ Each language reviewer detects the project's stack (e.g. `java` → Spring vs
 Quarkus vs Vert.x) and applies general-language rules always, stack-specific
 checks only when it detects that stack.
 
-### Skills (`skills/`, 16)
+### Skills (`skills/`, 17)
 
 `address-review-comments`, `agent-self-evaluation`, `context-budget`,
 `contract-audit`, `editing-pr-descriptions`, `find-skills`, `goal-prompt`,
 `handoff`, `handoff-autonomously`, `memory-capture`, `monthly-setup-audit`,
 `roadmap`, `swift-actor-persistence`, `swift-concurrency-6-2`,
-`swift-protocol-di-testing`, `visual-companion`.
+`swift-protocol-di-testing`, `visual-companion`, `walkthrough`.
+
+`walkthrough` turns any item-list or long report into an interactive deck —
+one AskUserQuestion card per item, a decision log + tracker sync at the end,
+and a queue-instead-of-stall mode under an active `/goal`.
 
 `handoff` and `memory-capture` are the core session-continuity pair;
 `monthly-setup-audit` is a read-only health check of this setup itself.
