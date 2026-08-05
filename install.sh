@@ -77,6 +77,19 @@ if [ "$DRY" -eq 0 ]; then
   done
 fi
 
+# deep-think ships only as a Claude Code plugin now (no more PATH binary).
+# Install it via the CLI if available; both subcommands are idempotent so
+# re-running is safe once the marketplace/plugin already exist.
+if [ "$DRY" -eq 1 ]; then
+  say "would: install deep-think plugin (marketplace add + plugin install) if claude CLI is on PATH"
+elif command -v claude >/dev/null 2>&1; then
+  claude plugin marketplace add bis-code/claude-plugins >/dev/null 2>&1 || true
+  claude plugin install deep-think@bis-code >/dev/null 2>&1 || true
+  say "ok   deep-think plugin (marketplace + install)"
+else
+  say "skip deep-think plugin install (claude CLI not on PATH)"
+fi
+
 # Machine-local seeds — created only if absent, never overwritten.
 if [ ! -e "$REPO/rules/about-me.local.md" ] && [ -f "$REPO/rules/about-me.example.md" ]; then
   run cp "$REPO/rules/about-me.example.md" "$REPO/rules/about-me.local.md"

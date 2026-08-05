@@ -36,16 +36,16 @@ shell rc files.** That's mechanically enforced by
 `scripts/tests/install.bats`, not just a claim.
 
 **Required:** `jq`. **Optional:** `gh` (roadmap/PR skills), `leann` (semantic
-memory recall), `mcp-deep-think` (architecture/design nudges), `bats` +
-`shellcheck` (running the test suite yourself). Everything else works without
-any of these — see [Optional dependencies](#optional-dependencies) for exactly
-what degrades.
+memory recall), the `deep-think@bis-code` Claude Code plugin (architecture/design
+nudges), `bats` + `shellcheck` (running the test suite yourself). Everything
+else works without any of these — see
+[Optional dependencies](#optional-dependencies) for exactly what degrades.
 
 ## Layout
 
 ```
 CLAUDE.md           # user-scope context, loaded every session
-.mcp.json           # MCP servers: deep-think (optional — hooks degrade if absent)
+.mcp.json           # MCP servers (deep-think now ships as the deep-think@bis-code plugin; hooks degrade if absent)
 settings.json       # 10 configured plugins (8 enabled by default), 19 wired hooks, effortLevel, autoCompactWindow
 statusline.sh       # status line (model · cwd · branch · token meters)
 rules/              # canonical rules — behavioral instructions, loaded every session
@@ -108,7 +108,7 @@ rather than registered directly.
 | `PreToolUse` (`Edit\|Write\|MultiEdit`) | `pretooluse-config-protection.sh` | Confirms before modifying an *existing* lint/format config, to block "weaken the linter to silence the error." New configs pass freely. |
 | `PreToolUse` (`Task\|Agent`) | `pretooluse-dispatch-gate.sh` | Steers a general-purpose dispatch toward a named agent when the prompt clearly matches one — denies once per session, not a hard wall. |
 | `PreToolUse` (`Skill`) | `pretooluse-verification-pair.sh` | Enforces that a verification skill runs before a "finish the branch" skill. |
-| `UserPromptSubmit` | `userpromptsubmit-deepthink-nudge.sh` | Nudges toward the `mcp-deep-think` MCP tool when the prompt matches an architecture/design trigger. Fires at most once per session. |
+| `UserPromptSubmit` | `userpromptsubmit-deepthink-nudge.sh` | Nudges toward the deep-think plugin's think tool when the prompt matches an architecture/design trigger. Fires at most once per session. |
 | `UserPromptSubmit` | `userpromptsubmit-memory-recall.sh` | Injects relevant memory entries into context, gated by relevance. |
 | `SessionEnd` | `sessionend-memory-capture.sh` | Writes a raw capture pointer (not distilled memory) so the next session's `memory-capture` skill can review it. No LLM call here. |
 | `Notification` | `notify-attention.sh` | Desktop notification, fired only when Claude genuinely needs you, labeled by notification type. |
@@ -161,7 +161,7 @@ to version it in your own fork (see the comment in `.gitignore`).
 | `jq` | JSON parsing throughout hooks and scripts | Required — most hooks fail open, but install this one first. |
 | `gh` | `roadmap` skill, PR/issue-aware workflows | Those skills degrade to "ask the user to run gh manually." |
 | `leann` | Semantic memory recall (`userpromptsubmit-memory-recall.sh`, `stop-memory-index-rebuild.sh`) | Memory still works as plain file reads — just no similarity search. `install.sh` prints a note and skips index building. |
-| `mcp-deep-think` (`.mcp.json`) | Architecture/design nudges (`userpromptsubmit-deepthink-nudge.sh`) | Hook degrades silently; you reason without the nudge. |
+| `deep-think@bis-code` (Claude Code plugin) | Architecture/design nudges (`userpromptsubmit-deepthink-nudge.sh`) | Hook degrades silently; you reason without the nudge. `install.sh` installs the plugin automatically if the `claude` CLI is on PATH. |
 | `bats`, `shellcheck` | Running the test suite / pre-push lint yourself | CI still runs them; you just can't run `scripts/test-all.sh` locally without `bats`. |
 
 ## Doctor
