@@ -8,9 +8,13 @@
 childhood.*
 
 A complete user-scope [Claude Code](https://claude.com/claude-code) config:
-16 subagents, 14 skills, 20 hook scripts (19 wired as lifecycle hooks), a
+16 subagents, 17 skills, 20 hook scripts (19 wired as lifecycle hooks), a
 three-tier memory system that grows as you work, and a safety guard that
 blocks catastrophic deletes regardless of permission mode.
+
+Deeper documentation lives in the [wiki](https://github.com/bis-code/bearclaw/wiki)
+— per-hook rationale, the full skill/agent catalogs, the memory loop, and the
+testing/identity-gate story.
 
 The repo *is* the config. `install.sh` symlinks it into `~/.claude/`, so
 editing the live config edits the repo and your changes stay version
