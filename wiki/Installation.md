@@ -23,6 +23,15 @@ The installer is short and deliberately boring. It symlinks four files and seven
 | Files | `CLAUDE.md`, `.mcp.json`, `settings.json`, `statusline.sh` |
 | Directories | `rules`, `skills`, `hooks`, `agents`, `bin`, `commands`, `memory-global` |
 
+Before touching anything it runs a **preflight**: `jq`, `git`, and `python3`
+are hard requirements (the catastrophic-delete guard, `hooks/guard-destructive.py`,
+is a python3 hook — without python3 it cannot protect you), and the install
+aborts with per-tool install hints if one is missing. `claude`, `leann`, `gh`,
+`bats`, and `terminal-notifier` are reported found/missing with hints so a
+skipped feature is a visible choice, then the install proceeds. The preflight
+only checks — it never installs software, preserving the touches-only-`DEST`
+guarantee below.
+
 Beyond the symlinks it does five things:
 
 1. **Sets executable bits** on `statusline.sh`, `hooks/*.sh`, `hooks/lib/*.sh`, `scripts/*.sh`, and `bin/*` — targeting the repo directly, since `chmod` follows symlinks. `*.test.sh` files are skipped on purpose: they are invoked as `sh <file>`, never executed directly, so chmod-ing them would dirty the tree against their tracked mode on every install.

@@ -39,10 +39,13 @@ it created and never touches your memory. **`install.sh` touches only its
 shell rc files.** That's mechanically enforced by
 `scripts/tests/install.bats`, not just a claim.
 
-**Required:** `jq`. **Optional:** `gh` (roadmap/PR skills), `leann` (semantic
+**Required:** `jq`, `git`, `python3` (the catastrophic-delete guard is a
+python3 hook). **Optional:** `gh` (roadmap/PR skills), `leann` (semantic
 memory recall), the `deep-think@bis-code` Claude Code plugin (architecture/design
-nudges), `bats` + `shellcheck` (running the test suite yourself). Everything
-else works without any of these — see
+nudges), `bats` + `shellcheck` (running the test suite yourself). `install.sh`
+runs a preflight first: it aborts with install hints if a required tool is
+missing and prints a note per absent optional one, so a skipped feature is a
+visible choice — it checks only, and never installs software itself. See
 [Optional dependencies](#optional-dependencies) for exactly what degrades.
 
 ## Layout
