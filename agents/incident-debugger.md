@@ -9,9 +9,9 @@ allowed_tools:
   - Bash
   - Edit
   - Write
-  - mcp__deep-think__think
-  - mcp__deep-think__reflect
-  - mcp__deep-think__strategize
+  - mcp__plugin_deep-think_deep-think__think
+  - mcp__plugin_deep-think_deep-think__reflect
+  - mcp__plugin_deep-think_deep-think__strategize
 ---
 
 # Incident Debugger Agent

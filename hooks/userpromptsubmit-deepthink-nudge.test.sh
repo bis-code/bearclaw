@@ -4,11 +4,12 @@
 HOOK="$(dirname "$0")/userpromptsubmit-deepthink-nudge.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-STUB="$TMP/mcp-deep-think"; printf '#!/bin/sh\n' > "$STUB"; chmod +x "$STUB"
+INSTALLED="$TMP/installed_plugins.json"; printf '{"deep-think@bis-code":{"version":"1.0.0"}}\n' > "$INSTALLED"
+MISSING="$TMP/no-deepthink.json"; printf '{"other-plugin@bis-code":{"version":"1.0.0"}}\n' > "$MISSING"
 fail=0
 ok(){ echo "ok   $1"; }
 bad(){ echo "FAIL $1 ($2)"; fail=1; }
-run(){ printf '%s' "$1" | CLAUDE_NUDGE_STATE_DIR="$TMP" DEEPTHINK_BIN="$STUB" sh "$HOOK"; }
+run(){ printf '%s' "$1" | CLAUDE_NUDGE_STATE_DIR="$TMP" DEEPTHINK_PLUGINS_FILE="$INSTALLED" sh "$HOOK"; }
 
 # t1: architecture trigger -> additionalContext emitted, names deep-think
 out=$(run '{"prompt":"let us make an architecture decision for the payment flow","session_id":"s1"}')
@@ -31,17 +32,17 @@ out=$(run '{"prompt":"fix the typo in the readme","session_id":"s3"}')
 out=$(printf '' | CLAUDE_NUDGE_STATE_DIR="$TMP" sh "$HOOK"); rc=$?
 { [ "$rc" -eq 0 ] && [ -z "$out" ]; } && ok "t5 empty stdin no-op" || bad "t5" "rc=$rc out=$out"
 
-# t6: binary absent at an explicit path -> silent even on a matching prompt
+# t6: plugins file exists but lacks the deep-think key -> silent even on a matching prompt
 mkdir -p "$TMP/s6"
 out=$(printf '%s' '{"prompt":"architecture decision for the auth flow","session_id":"absent1"}' \
-  | CLAUDE_NUDGE_STATE_DIR="$TMP/s6" DEEPTHINK_BIN="$TMP/s6/nope" sh "$HOOK")
-[ -z "$out" ] && ok "t6 silent when deep-think binary absent" || bad "t6" "$out"
+  | CLAUDE_NUDGE_STATE_DIR="$TMP/s6" DEEPTHINK_PLUGINS_FILE="$MISSING" sh "$HOOK")
+[ -z "$out" ] && ok "t6 silent when plugin key absent" || bad "t6" "$out"
 
-# t7: bare command name not on PATH -> silent
+# t7: plugins file path doesn't exist -> silent
 mkdir -p "$TMP/s7"
 out=$(printf '%s' '{"prompt":"architecture decision for the auth flow","session_id":"absent2"}' \
-  | CLAUDE_NUDGE_STATE_DIR="$TMP/s7" DEEPTHINK_BIN="definitely-not-a-real-binary-xyz" sh "$HOOK")
-[ -z "$out" ] && ok "t7 silent when bare name not on PATH" || bad "t7" "$out"
+  | CLAUDE_NUDGE_STATE_DIR="$TMP/s7" DEEPTHINK_PLUGINS_FILE="$TMP/s7/nope.json" sh "$HOOK")
+[ -z "$out" ] && ok "t7 silent when plugins file missing" || bad "t7" "$out"
 
 echo
 [ "$fail" -eq 0 ] && echo "ALL PASS" || echo "SOME FAILED"

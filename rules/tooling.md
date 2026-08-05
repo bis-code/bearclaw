@@ -6,7 +6,7 @@ When to reach for MCPs, plugins, and skills — guidance the harness doesn't alr
 
 | Need | Tool |
 |---|---|
-| Architecture decision, schema design, payment/auth flow, multi-module impact | `deep-think` — **mandatory when installed**; if `mcp-deep-think` is not on PATH, reason inline and say so once |
+| Architecture decision, schema design, payment/auth flow, multi-module impact | `deep-think` — **mandatory when installed**; if the `deep-think@bis-code` plugin is not installed, reason inline and say so once |
 | Code search (concept or exact symbol) | built-in `Grep`/`Glob`; `Explore` agent for broad multi-location sweeps |
 
 ## Plugins
