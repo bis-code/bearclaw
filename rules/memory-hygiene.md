@@ -9,8 +9,8 @@ Three stores, by scope:
 | Store | Location | Committed | Loaded | Holds |
 |---|---|---|---|---|
 | `rules/` | `claude-setup/rules/` | yes | every session | behavioral instructions |
-| Global memory | `claude-setup/memory-global/` → `~/.claude/memory-global/` | yes | every session (SessionStart hook) | cross-cutting facts/failures |
-| Repo-local | `<repo>/.claude/memory/` | no (gitignored) | when cwd = that repo (hook) | project-specific facts/failures |
+| Global memory | `claude-setup/memory-global/` → `~/.claude/memory-global/` | scaffolding yes; your written content gitignored by default (opt in via .gitignore) | every session (SessionStart hook) | cross-cutting facts/failures |
+| Repo-local | `<repo>/.claude/memory/` | gitignored by default; commit it in your private repos if you want machine portability | when cwd = that repo (hook) | project-specific facts/failures |
 
 **Classification rule:** **Global** if it's true *regardless of which repo
 you're in* — CLI/tool behavior, cross-project conventions, user preferences,
@@ -76,14 +76,15 @@ Structural claims include:
 ## Related skills
 
 - `superpowers:handoff` — handoff docs and memory complement each other: handoff = mid-cycle state, memory = cross-cycle lessons
-- Repo-scope: each repo's gitignored `.claude/memory/` is the repo-bound version of this discipline (see "Memory tiers" above). The legacy `~/.claude/projects/<workspace>/memory/` path is deprecated.
+- Repo-scope: each repo's `.claude/memory/` is the repo-bound version of this discipline (gitignored by default; committed where you've opted in — see "Memory tiers" above). The legacy `~/.claude/projects/<workspace>/memory/` path is deprecated.
 
 ## ERRORS.md convention
 
 `ERRORS.md` is a failure journal alongside `MEMORY.md`, and follows the tiered
 model (see "Memory tiers" above): the **global** journal at
 `memory-global/ERRORS.md` is committed; a **repo-local** journal at
-`<repo>/.claude/memory/ERRORS.md` is gitignored. The *convention* (format and
+`<repo>/.claude/memory/ERRORS.md` follows its repo's memory policy (gitignored
+by default; committed where you commit repo-local memory). The *convention* (format and
 rules below) is shared across tiers; `install.sh` seeds an `ERRORS.md` if absent.
 
 **Entry format (newest first):**
@@ -103,8 +104,8 @@ time; (2) it's environment/tooling-specific, not an in-flux code-logic bug;
 or "we discussed X" (that's a decision → MEMORY.md).
 
 **Prune:** 200-line total-file cap (rotate oldest-resolved entries to
-`ERRORS.archive.md` in the SAME tier's dir as `ERRORS.md` — gitignored alongside a
-repo-local `ERRORS.md`, committed alongside the global `memory-global/ERRORS.md`;
+`ERRORS.archive.md` in the SAME tier's dir as `ERRORS.md` — it inherits that
+tier's committed/ignored status;
 never silent-truncate). Delete on scope-death (the repo/tool in `Scope:` is gone).
 
 **Which file?** *"Would I grep this when something breaks?"* → ERRORS.md.
