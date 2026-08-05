@@ -40,6 +40,10 @@ in order:
    it must also require the downstream artifact that verification depends on
    — a build uploaded, a deploy live, a package published — or the goal ends
    "complete" with nothing to verify against.
+   If the remaining work includes human-input items (manual steps, decisions,
+   unverifiable outcomes), they must not block the goal: the end state counts
+   the **written walkthrough queue** (see the `walkthrough` skill) as the
+   deliverable for those items.
 2. **Stated check** — the command whose output proves it (`npm test` exits 0,
    `git status` clean). The evaluator only reads the transcript — the
    condition must be provable by Claude's own surfaced output.
@@ -63,6 +67,7 @@ After the block, add at most two one-line notes when they apply:
 | Constraint asserted with no proof | Pair every constraint with the check that shows it held |
 | End state stops at a verify gate whose prerequisite artifact is never produced | Include the build/deploy/publish step the verification needs |
 | Proof the evaluator can't see (file contents never printed) | State the check whose output lands in the transcript |
+| Goal blocks on a manual step or human decision | Queue it (walkthrough queue = the deliverable); the goal completes with the queue written |
 | No bound | Always append "stop after N turns" |
 | Multiple unrelated goals in one condition | One goal per session — pick the one end state, or sequence sessions |
 | Condition >4,000 chars | Trim to end state + check + constraints + bound |

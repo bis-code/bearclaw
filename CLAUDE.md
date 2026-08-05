@@ -46,7 +46,7 @@ Every `/handoff` ends with a clipboard-ready next-session prompt. `/handoff-auto
 
 ## Conversation Pacing
 
-When you have multiple clarifying questions, decisions to confirm, or trade-offs to surface: **walk through them ONE AT A TIME**. Ask one question, wait for the answer, lock it in, then move to the next. Do not bundle them into a single multi-part message — large lists are confusing to read and answer, especially on mobile. The only exception is when the user explicitly asks for the full list up front.
+When you have multiple clarifying questions, decisions to confirm, or trade-offs to surface: **walk through them ONE AT A TIME**. Ask one question, wait for the answer, lock it in, then move to the next. Do not bundle them into a single multi-part message — large lists are confusing to read and answer, especially on mobile. The only exception is when the user explicitly asks for the full list up front. When the items are verdicts on a list (findings, steps, checklists, reports), this is mechanized by the `walkthrough` skill — one AskUserQuestion card per item.
 
 ## Model Selection (for Agent / sub-agent dispatch)
 
@@ -73,6 +73,6 @@ To add `~/.claude/agents` on a new machine: run `./install.sh` (it handles the s
 
 ## Skills
 
-User-maintained skills: `skills/editing-pr-descriptions/`, `skills/handoff/`, `skills/handoff-autonomously/` (handoff + `/goal` line for an unattended next session), `skills/goal-prompt/` (writes a `/goal` condition from the embedded built-in-command docs — models don't know `/goal` natively), `skills/agent-self-evaluation/`, `skills/monthly-setup-audit/` (monthly read-only health-check of the whole Claude setup → a risk-grouped report you choose where to save). No orchestrator wrappers remain — natural language + `superpowers:` plus user-scope agents (above) cover the previous ralph/qa surface area.
+User-maintained skills: `skills/editing-pr-descriptions/`, `skills/handoff/`, `skills/handoff-autonomously/` (handoff + `/goal` line for an unattended next session), `skills/goal-prompt/` (writes a `/goal` condition from the embedded built-in-command docs — models don't know `/goal` natively), `skills/walkthrough/` (item-lists and long reports → one AskUserQuestion card per item, decision log + tracker sync; queues instead of stalling under `/goal`), `skills/agent-self-evaluation/`, `skills/monthly-setup-audit/` (monthly read-only health-check of the whole Claude setup → a risk-grouped report you choose where to save). No orchestrator wrappers remain — natural language + `superpowers:` plus user-scope agents (above) cover the previous ralph/qa surface area.
 
 Plan-execution chain: after `superpowers:writing-plans` produces a plan, the documented follow-on is `superpowers:executing-plans` (≤5 small tasks) or `superpowers:subagent-driven-development` (3+ independent workstreams). Don't leave a plan dangling.
