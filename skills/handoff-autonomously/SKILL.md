@@ -12,7 +12,13 @@ with a `/goal` condition so it runs to completion without per-turn prompting.
    handoff doc, clipboard-ready prompt).
 2. **REQUIRED SUB-SKILL: `goal-prompt`** — read its reference docs, then derive
    the condition from the handoff's "What's Next" and its verification steps.
-3. **Walkthrough wiring** — Message 1 must instruct the goal session to:
+3. **Persist the goal in the doc** — append the full `/goal` line to the
+   handoff doc itself as a final `## Autonomous goal` section (and commit it
+   with the doc). Chat scrollback is lossy: a /goal that exists only in chat
+   has already been lost once and had to be recovered from the previous
+   session's raw JSONL transcript (2026-08-05). The committed doc is the
+   durable copy; the paste block below is just its delivery.
+4. **Walkthrough wiring** — Message 1 must instruct the goal session to:
    (a) never present AskUserQuestion cards while the goal is active — queue
    human-shaped items (manual steps, unverifiable outcomes, unauthorized
    decisions) instead, per the `walkthrough` skill's unattended mode;
@@ -21,7 +27,7 @@ with a `/goal` condition so it runs to completion without per-turn prompting.
    Proposed next steps**;
    (c) on the user's first message after the goal completes, proactively deal
    the `walkthrough` deck over that report (recap → queue → next steps).
-4. Final output is TWO paste messages, clearly labeled — a slash command only
+5. Final output is TWO paste messages, clearly labeled — a slash command only
    executes at the start of a message, so the `/goal` line must be sent on its
    own, and after `/clear` (which wipes any active goal):
 

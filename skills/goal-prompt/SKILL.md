@@ -53,6 +53,14 @@ in order:
 4. **Bound** — a turn clause so a stuck goal terminates. Scale N to the work:
    ~10 for a bounded fix, ~20 for a feature slice, 30–40 for a migration or
    backlog drain.
+5. **Alternate terminal state** — if the work can legitimately end without
+   success (external blocker, retries exhausted, waiting on a human), the
+   condition MUST name that stop as met: "OR: blocker recorded in <artifact>
+   + retries exhausted ⇒ condition met". A condition whose failure branch
+   only *describes* stopping ("if it keeps failing, record and stop") is
+   never judged met — the evaluator re-reports "not met" every turn until
+   the bound (observed: 6+ identical evaluations burned on an
+   externally-blocked state, 2026-08-05).
 
 After the block, add at most two one-line notes when they apply:
 - "Pair with auto mode for unattended runs — /goal doesn't change permissions."
@@ -70,4 +78,5 @@ After the block, add at most two one-line notes when they apply:
 | Goal blocks on a manual step or human decision | Queue it (walkthrough queue = the deliverable); the goal completes with the queue written |
 | No bound | Always append "stop after N turns" |
 | Multiple unrelated goals in one condition | One goal per session — pick the one end state, or sequence sessions |
+| Failure branch that only says "record and stop" | Add "OR: <recorded artifact> + retries exhausted ⇒ condition met" so a legitimate stop is judged met |
 | Condition >4,000 chars | Trim to end state + check + constraints + bound |
