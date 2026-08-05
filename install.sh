@@ -29,6 +29,48 @@ FILES=(CLAUDE.md .mcp.json settings.json statusline.sh)
 DIRS=(rules skills hooks agents bin commands memory-global)
 
 say() { printf '%s\n' "$*"; }
+
+# Preflight: report every external command the installed setup depends on,
+# BEFORE touching anything. Hard requirements abort; everything else is
+# informational so a skipped feature is a visible choice, not a surprise.
+# Deliberately check-only — this script never installs other software
+# (see the touches-only-$DEST guarantee above).
+preflight() {
+  local hard_missing=0
+  say "-- preflight ------------------------------------------------------"
+  # Hard requirements: hooks parse JSON with jq; the destructive-command
+  # guard (hooks/guard-destructive.py) is python3; git is how everything
+  # here versions and links.
+  # No associative arrays — macOS ships bash 3.2.
+  hint() {
+    case "$1" in
+      jq)      echo "brew install jq | apt-get install jq" ;;
+      git)     echo "xcode-select --install | apt-get install git" ;;
+      python3) echo "ships with macOS CLT | apt-get install python3 — WITHOUT it hooks/guard-destructive.py (the catastrophic-delete guard) cannot run" ;;
+      claude)  echo "npm install -g @anthropic-ai/claude-code" ;;
+      leann)   echo "uv tool install leann-core (or pipx)" ;;
+      gh)      echo "brew install gh | apt-get install gh" ;;
+      bats)    echo "brew install bats-core | apt-get install bats" ;;
+      terminal-notifier) echo "brew install terminal-notifier (macOS nicety; osascript fallback used otherwise)" ;;
+    esac
+  }
+  local c
+  for c in jq git python3; do
+    if command -v "$c" >/dev/null 2>&1; then say "ok   $c"
+    else say "MISS $c  (REQUIRED — $(hint "$c"))"; hard_missing=1; fi
+  done
+  if command -v claude >/dev/null 2>&1; then say "ok   claude"
+  else say "MISS claude  (this config is FOR Claude Code — $(hint claude); the deep-think plugin step will be skipped)"; fi
+  for c in leann gh bats terminal-notifier; do
+    if command -v "$c" >/dev/null 2>&1; then say "ok   $c"
+    else say "note $c not found (optional — $(hint "$c"))"; fi
+  done
+  if [ "$hard_missing" -eq 1 ]; then
+    say "-- preflight FAILED: install the required tools above, then re-run."
+    exit 1
+  fi
+  say "-------------------------------------------------------------------"
+}
 run() { [ "$DRY" -eq 1 ] && { say "would: $*"; return 0; }; "$@"; }
 
 link() {
@@ -56,6 +98,8 @@ if [ "$MODE" = uninstall ]; then
   say "done. your memory under $DEST and ~/.local/state/claude-memory was NOT removed."
   exit 0
 fi
+
+preflight
 
 run mkdir -p "$DEST"
 for f in "${FILES[@]}"; do link "$f"; done
