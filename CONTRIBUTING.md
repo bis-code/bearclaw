@@ -42,6 +42,14 @@ Contributions welcome — especially new agents, skills, and hooks.
 
 That runs every suite plus the identity gate. It must be green.
 
+## Wiki
+
+The [wiki](https://github.com/bis-code/bearclaw/wiki) is repo-sourced: pages
+live in `wiki/` and `.github/workflows/wiki-sync.yml` publishes them on merge
+to main. Edit `wiki/`, not the wiki UI — direct wiki edits are overwritten by
+the next sync. This keeps wiki content PR-reviewable and inside the identity
+gate.
+
 ## Commit format
 
 `<type>(<scope>): <description>` — `feat`, `fix`, `refactor`, `test`, `docs`,

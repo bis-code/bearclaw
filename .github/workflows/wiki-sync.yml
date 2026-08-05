@@ -1,0 +1,35 @@
+# Publishes wiki/ to the GitHub wiki on every merge to main that touches it.
+# wiki/ is the source of truth: pages are PR-reviewable and scanned by the same
+# CI identity gate as the rest of the tree. Direct edits made in the wiki UI
+# get overwritten by the next sync — edit wiki/ instead.
+name: wiki-sync
+
+on:
+  push:
+    branches: [main]
+    paths: ['wiki/**']
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Push wiki/ to the GitHub wiki
+        run: |
+          git clone --depth 1 \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" /tmp/wiki
+          rsync -a --delete --exclude .git wiki/ /tmp/wiki/
+          cd /tmp/wiki
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "wiki unchanged — nothing to sync"
+            exit 0
+          fi
+          git commit -m "sync wiki from ${{ github.sha }}"
+          git push
