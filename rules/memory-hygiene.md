@@ -103,10 +103,13 @@ time; (2) it's environment/tooling-specific, not an in-flux code-logic bug;
 **Do NOT log:** transient bugs in your own diff, anything already in MEMORY.md,
 or "we discussed X" (that's a decision → MEMORY.md).
 
-**Prune:** 200-line total-file cap (rotate oldest-resolved entries to
-`ERRORS.archive.md` in the SAME tier's dir as `ERRORS.md` — it inherits that
-tier's committed/ignored status;
-never silent-truncate). Delete on scope-death (the repo/tool in `Scope:` is gone).
+**Prune:** delete on scope-death (the repo/tool named in `Scope:` is gone) —
+that is the only reason to remove an entry. **There is no length cap.**
+`hooks/lib/memory-corpus-stage.sh` splits this file into one indexed chunk per
+`## ` entry, so entries are retrieved individually and total file length costs
+nothing at read time. **Never rotate entries into an archive file:** the corpus
+stager excludes `ERRORS.archive.md`, so archiving does not demote an entry — it
+removes it from recall entirely while leaving it looking safely filed.
 
 **Which file?** *"Would I grep this when something breaks?"* → ERRORS.md.
 *"Would I cite this when designing?"* → MEMORY.md.
