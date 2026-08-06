@@ -85,6 +85,54 @@ ln -s "$CANON" "$LIVE"
 run
 [ "$(jq -r 'has("effortLevel")' "$CANON")" = "false" ] && ok "t8 committed removal respected" || bad "t8 effortLevel" "$(cat "$CANON")"
 
+# T9: nothing missing -> git is never invoked. This is what makes the hook
+# affordable on Stop (every turn) rather than only at SessionStart.
+run_path(){ PATH="$TMP/fakebin:$PATH" CLAUDE_SETUP_REPO="$TMP/repo" CLAUDE_CONFIG_DIR="$TMP/root" bash "$HOOK" >/dev/null 2>&1; }
+setup
+mkdir -p "$TMP/fakebin"
+printf '#!/bin/sh\necho called >> "%s/git-calls"\nexit 0\n' "$TMP" > "$TMP/fakebin/git"
+chmod +x "$TMP/fakebin/git"
+rm -f "$TMP/git-calls"
+printf '{"effortLevel":"auto"}' > "$CANON"
+ln -s "$CANON" "$LIVE"
+run_path
+[ ! -f "$TMP/git-calls" ] && ok "t9 git not invoked when nothing is missing" || bad "t9 git called" "$(cat "$TMP/git-calls")"
+
+# T9b: a key IS missing -> git is invoked (proves the pre-check gates, not blocks)
+setup
+rm -f "$TMP/git-calls"
+printf '{"model":"opus"}' > "$CANON"
+ln -s "$CANON" "$LIVE"
+run_path
+[ -f "$TMP/git-calls" ] && ok "t9b git invoked when a key is missing" || bad "t9b git not called" "no $TMP/git-calls"
+
+# T10: silent mode repairs but emits nothing. Stop's stdout contract differs
+# from SessionStart's, so a stray JSON payload there is a production-only bug.
+setup
+( cd "$TMP/repo" && git init -q && git config user.email t@t && git config user.name t )
+printf '{"effortLevel":"auto","model":"opus"}' > "$CANON"
+( cd "$TMP/repo" && git add settings.json && git commit -qm seed )
+printf '{"model":"sonnet"}' > "$CANON"
+ln -s "$CANON" "$LIVE"
+out=$(SETTINGS_HEAL_SILENT=1 CLAUDE_SETUP_REPO="$TMP/repo" CLAUDE_CONFIG_DIR="$TMP/root" bash "$HOOK" 2>/dev/null)
+[ -z "$out" ] && ok "t10 silent mode emits nothing" || bad "t10 stdout" "$out"
+[ "$(jq -r '.effortLevel' "$CANON")" = "auto" ] && ok "t10 silent mode still repairs" || bad "t10 effortLevel" "$(cat "$CANON")"
+
+# T11: silent mode also mutes the clobber-path message
+setup
+printf '{"effortLevel":"xhigh","model":"opus"}' > "$CANON"
+printf '{"model":"sonnet"}' > "$LIVE"
+out=$(SETTINGS_HEAL_SILENT=1 CLAUDE_SETUP_REPO="$TMP/repo" CLAUDE_CONFIG_DIR="$TMP/root" bash "$HOOK" 2>/dev/null)
+[ -z "$out" ] && ok "t11 silent clobber path emits nothing" || bad "t11 stdout" "$out"
+[ -L "$LIVE" ] && ok "t11 still re-symlinked" || bad "t11 symlink" "$(ls -l "$LIVE")"
+
+# T12: default (unset) still emits — SessionStart behaviour is unchanged
+setup
+printf '{"effortLevel":"xhigh"}' > "$CANON"
+printf '{"model":"sonnet"}' > "$LIVE"
+out=$(CLAUDE_SETUP_REPO="$TMP/repo" CLAUDE_CONFIG_DIR="$TMP/root" bash "$HOOK" 2>/dev/null)
+printf '%s' "$out" | grep -q systemMessage && ok "t12 default still emits systemMessage" || bad "t12 stdout" "$out"
+
 # t: REPO fallback resolves through a symlinked hooks dir to the REPO root,
 # not to the symlink's parent. Extracts the shipped assignment line and
 # evaluates it from a symlinked path, which is how the hook is really invoked.

@@ -21,6 +21,11 @@ CANON="$REPO/settings.json"
 ROOT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 LIVE="$ROOT/settings.json"
 
+# The hook is registered on SessionStart AND on Stop. Stop's stdout contract is
+# not SessionStart's, so the Stop registration sets SETTINGS_HEAL_SILENT=1 and
+# every repair runs without emitting anything.
+say() { [ -n "${SETTINGS_HEAL_SILENT:-}" ] && return 0; printf "$@"; }
+
 # Nothing to heal against if the canonical file is gone.
 [ -f "$CANON" ] || exit 0
 
@@ -34,13 +39,25 @@ LIVE="$ROOT/settings.json"
 # that was actually committed, is respected.
 sticky_check() {
   command -v jq >/dev/null 2>&1 || return 0
+
+  # Local-only pre-check FIRST. One jq per sticky key against a local file
+  # decides whether anything needs healing; only then do we pay for git. This
+  # is what lets the hook run on Stop (every turn) as well as SessionStart —
+  # an unconditional `git show HEAD:settings.json` per turn was the cost that
+  # made per-turn healing unattractive.
+  missing=""
+  for k in ${SETTINGS_STICKY_KEYS:-effortLevel}; do
+    [ "$(jq -r --arg k "$k" 'has($k)' "$CANON" 2>/dev/null)" = "false" ] || continue
+    missing="$missing $k"
+  done
+  [ -n "$missing" ] || return 0
+
   command -v git >/dev/null 2>&1 || return 0
   git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1 || return 0
   head_json=$(git -C "$REPO" show HEAD:settings.json 2>/dev/null)
   [ -n "$head_json" ] || return 0
   restored=""
-  for k in ${SETTINGS_STICKY_KEYS:-effortLevel}; do
-    [ "$(jq -r --arg k "$k" 'has($k)' "$CANON" 2>/dev/null)" = "false" ] || continue
+  for k in $missing; do
     [ "$(printf '%s' "$head_json" | jq -r --arg k "$k" 'has($k)' 2>/dev/null)" = "true" ] || continue
     v=$(printf '%s' "$head_json" | jq -c --arg k "$k" '.[$k]')
     t2="$(mktemp)"
@@ -50,7 +67,7 @@ sticky_check() {
     fi
     rm -f "$t2"
   done
-  [ -n "$restored" ] && printf '{"systemMessage":"settings.json self-heal: restored sticky key(s)%s (dropped by a stale write-through; values from git HEAD). Review/commit repo settings.json."}\n' "$restored"
+  [ -n "$restored" ] && say '{"systemMessage":"settings.json self-heal: restored sticky key(s)%s (dropped by a stale write-through; values from git HEAD). Review/commit repo settings.json."}\n' "$restored"
   return 0
 }
 
@@ -75,13 +92,13 @@ if [ -f "$LIVE" ] && [ ! -L "$LIVE" ]; then
   if jq -s '.[0] * .[1]' "$CANON" "$LIVE" >"$tmp" 2>/dev/null && [ -s "$tmp" ] && jq empty "$tmp" 2>/dev/null; then
     cp "$tmp" "$CANON"
     resymlink
-    printf '{"systemMessage":"settings.json self-heal: re-symlinked %s -> repo and merged live keys back (no loss). Review/commit repo settings.json."}\n' "$LIVE"
+    say '{"systemMessage":"settings.json self-heal: re-symlinked %s -> repo and merged live keys back (no loss). Review/commit repo settings.json."}\n' "$LIVE"
   fi
   rm -f "$tmp"
   sticky_check
 elif [ ! -e "$LIVE" ]; then
   # Broken or missing symlink — nothing to preserve, just re-assert it.
   resymlink
-  printf '{"systemMessage":"settings.json self-heal: re-symlinked %s -> repo."}\n' "$LIVE"
+  say '{"systemMessage":"settings.json self-heal: re-symlinked %s -> repo."}\n' "$LIVE"
 fi
 exit 0

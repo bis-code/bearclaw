@@ -231,6 +231,11 @@
             "type": "command",
             "command": "$HOME/.claude/hooks/stop-memory-signal.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "SETTINGS_HEAL_SILENT=1 $HOME/.claude/hooks/sessionstart-heal-settings.sh",
+            "timeout": 5
           }
         ]
       }
