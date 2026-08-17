@@ -1,17 +1,10 @@
 ---
 name: incident-debugger
 model: sonnet
-description: "Use when code compiles but behaves wrong at runtime — a flaky test, wrong response shape, unexpected 500, missing trace span, race condition. Hypothesis-driven debugging with deep-think MCP."
-allowed_tools:
-  - Read
-  - Glob
-  - Grep
-  - Bash
-  - Edit
-  - Write
-  - mcp__plugin_deep-think_deep-think__think
-  - mcp__plugin_deep-think_deep-think__reflect
-  - mcp__plugin_deep-think_deep-think__strategize
+effort: xhigh
+memory: user
+description: "Use when code compiles but behaves wrong at runtime — flaky test, wrong response shape, unexpected 500, race condition. Hypothesis-driven debugging with deep-think."
+tools: Read, Glob, Grep, Bash, Edit, Write, mcp__plugin_deep-think_deep-think__think, mcp__deep-think__think, mcp__plugin_deep-think_deep-think__reflect, mcp__deep-think__reflect, mcp__plugin_deep-think_deep-think__strategize, mcp__deep-think__strategize
 ---
 
 # Incident Debugger Agent

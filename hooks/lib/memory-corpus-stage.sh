@@ -2,7 +2,11 @@
 # memory-corpus-stage.sh <src-memory-dir> <stage-dir>
 # Stages the recall corpus: curated per-file entries + per-entry ERRORS chunks.
 set -e
-SRC="$1"; STAGE="$2"
+SRC="${1:-}"; STAGE="${2:-}"
+if [ -z "$SRC" ] || [ -z "$STAGE" ]; then
+  echo "usage: memory-corpus-stage.sh <src-memory-dir> <stage-dir>" >&2
+  exit 2
+fi
 [ -d "$SRC" ] || exit 0
 rm -rf "$STAGE"; mkdir -p "$STAGE"
 

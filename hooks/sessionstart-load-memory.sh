@@ -42,7 +42,33 @@ else
   fi
 fi
 
+# D2 fallback: slim mode trusts the recall hook, so verify its index actually
+# EXISTS before honoring the toggle — a missing index under slim mode caused a
+# session-long silent memory blackout (2026-08-16). Falls back to eager load
+# with a visible notice. LEANN_INDEX_HOME is the test seam.
+_SLIM_FALLBACK=0
+if [ "$_slim" -eq 1 ] && [ ! -d "${LEANN_INDEX_HOME:-$HOME/.leann/indexes}/$GLOBAL_MEM_INDEX" ]; then
+  _slim=0
+  _SLIM_FALLBACK=1
+fi
+
 OUT=""
+
+# Surface a broken index build (marker written by lib/memory-index-build.sh).
+# Without this, a dead index means recall silently returns nothing all session.
+_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/claude-memory"
+for _e in "$_STATE"/*.build.err; do
+  [ -f "$_e" ] || continue
+  OUT="${OUT}## Memory index BROKEN
+$(head -1 "$_e") Full log: ${_e%.err}.log — recall is degraded until fixed.
+"
+done
+
+if [ "$_SLIM_FALLBACK" -eq 1 ]; then
+  OUT="${OUT}## Memory notice
+recall index missing (${LEANN_INDEX_HOME:-$HOME/.leann/indexes}/$GLOBAL_MEM_INDEX) — memory loaded eagerly this session; the index rebuilds at session start (doctor group 10 has details).
+"
+fi
 
 if [ "$_slim" -eq 1 ]; then
   # Slim mode: skip eager dumps; let the recall hook serve bodies on-demand.

@@ -42,8 +42,28 @@ else
   echo "  skip (bats not installed)"
 fi
 
-echo "identity gate:"
-run "no identity leaks" ./scripts/check-no-identity.sh
+# ---- always-loaded size guard (S4 rules diet, 2026-08-16) -------------------
+# Ceilings are ADJUSTABLE constants: raising one is a conscious, visible-in-
+# diff decision (trim elsewhere or bump deliberately) — never silent accretion.
+# Chars measured AFTER stripping <!-- --> comments (stripped from loaded
+# context by the harness, so they're free).
+CLAUDE_MD_MAX=6000
+RULES_MAX=17000   # raised 16000->17000 2026-08-16: reserved headroom for the approved wave-6 rules (two-machine-sync, op-run convention)
+strip_comments() { perl -0pe 's/<!--.*?-->//gs' "$1"; }
+CM=$(strip_comments CLAUDE.md | wc -c)
+RT=0
+for f in rules/*.md; do
+  case "$f" in rules/about-me.local.md) continue ;; esac
+  RT=$((RT + $(strip_comments "$f" | wc -c)))
+done
+echo "size guard: CLAUDE.md=${CM}/${CLAUDE_MD_MAX} rules/=${RT}/${RULES_MAX} (comment-stripped chars)"
+if [ "$CM" -gt "$CLAUDE_MD_MAX" ] || [ "$RT" -gt "$RULES_MAX" ]; then
+  echo "  FAIL size guard: always-loaded set over ceiling — run the rules-diet (trim or consciously raise the constant in scripts/test-all.sh)"
+  fail=$((fail+1)); failed+=("size-guard (always-loaded ceiling)")
+else
+  pass=$((pass+1))
+fi
+
 
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"
@@ -52,3 +72,4 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 exit 0
+

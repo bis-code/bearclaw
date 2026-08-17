@@ -19,9 +19,8 @@ search() { # <index>
   leann search "$1" "$PROMPT" --top-k 8 --json --non-interactive --show-metadata 2>/dev/null
 }
 # Per-root global tier: derive the index name from the active config root so
-# each config root keeps its own global memory index (e.g. ~/.claude ->
-# claude-memory-global) and never shares global memory with another root.
-# Overridable for tests.
+# cl-p (~/.claude -> claude-memory-global) and cl-w (~/.claude-work ->
+# claude-work-memory-global) never share global memory. Overridable for tests.
 GLOBAL_MEM_INDEX="${GLOBAL_MEM_INDEX:-$(basename "${CLAUDE_CONFIG_DIR:-$HOME/.claude}" | sed 's/^\.//')-memory-global}"
 GLOBAL_MEM_DIR="${GLOBAL_MEM_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/memory-global}"
 GLOBAL=$(search "$GLOBAL_MEM_INDEX")
@@ -50,7 +49,8 @@ MERGED=$(printf '%s\n%s' "${GLOBAL:-[]}" "$REPO_JSON" | jq -s 'add // []' 2>/dev
 IDS_FILE=$(mktemp 2>/dev/null) || IDS_FILE=""
 BLOCK=$(printf '%s' "$MERGED" \
   | MEMORY_USAGE_LOG="$MEMSTORE_USAGE/recall-log.jsonl" \
-    python3 "$DIR/lib/memory-recall.py" --floor "${MEMORY_FLOOR:-0.5}" --top-k 3 --budget-tokens 400 \
+    python3 "$DIR/lib/memory-recall.py" --floor "${MEMORY_FLOOR:-0.5}" \
+      --top-k "${MEMORY_TOP_K:-4}" --budget-tokens "${MEMORY_BUDGET_TOKENS:-225}" \
       --mem-dir "$GLOBAL_MEM_DIR" --mem-dir "$REPO_MEM_DIR" \
     3>"${IDS_FILE:-/dev/null}" 2>/dev/null)
 if [ -z "$BLOCK" ]; then

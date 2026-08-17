@@ -17,7 +17,7 @@ A handoff is mid/end-of-session state capture. Writing-plans is pre-work; handof
 
 Run this when ANY of these are true:
 
-- Context window is >70% full or the user mentions compaction
+- The context warning fired (60% gentle / 70% urgent — stop-handoff-reminder.sh, exact API-usage numbers) or the user mentions compaction
 - The user says "let's pause", "I need to stop", "handoff", "continuation prompt"
 - End of working session with unfinished implementation
 - About to switch to a parallel session on the same topic
@@ -41,13 +41,13 @@ Skipping step 1 = writing fiction. The handoff must reflect the actual VCS state
 
 ## If the repo is a personal project with a GitHub-Issues roadmap
 
-When the repo is one you own and can write to, its roadmap lives in **GitHub Issues** (see the `roadmap` skill) — don't duplicate it into the handoff:
+When the repo is under `~/som` (bis-code, has a remote) and **not** under `~/work/`, its roadmap lives in **GitHub Issues** (see the `roadmap` skill) — don't duplicate it into the handoff:
 
 - **What's Next** → point at the issues (`gh issue list --label now` / `--label next`); do NOT restate the workstreams.
 - Capture only the **session delta** not yet recorded: uncommitted work, dead-ends tried, open questions, decisions not yet written to an issue.
 - Reconcile + update the issues (close done, promote next→now) as part of the handoff, then reference them from the Resume Command.
 
-**For a repo you don't own or can't write to:** full self-contained capture per the template below — defer to that project's own tracking (read-only). The GitHub-Issues roadmap convention is for repos you own and can write to.
+**Under `~/work/`:** full self-contained capture per the template below — defer to the work project's own tracking (the work tracker, read-only). The GitHub-Issues roadmap convention is personal-projects-only.
 
 ## Output Location
 
@@ -155,7 +155,7 @@ If the project has a GitHub issue tied to this work (check for `issue/<number>-*
 gh issue comment <number> --body-file docs/superpowers/handoffs/<file>.md
 ```
 
-Ask the user before running this. Never auto-comment on a repo you don't own or can't write to.
+Ask the user before running this. Do not auto-comment on work repos (`~/work/*`).
 
 ## Optional: Capture memory
 
@@ -196,6 +196,54 @@ If no: fix the gap. Usually it's a missing resume command or an unstated decisio
 
 - **Stale file paths**: if Claude has been moving/renaming files during the session, verify each path still exists before writing it into the handoff. A resume prompt with a broken path is worse than no handoff.
 - **Secrets in context**: never include pasted tokens, API keys, or credentials that appeared during the session. Strip them before handoff.
-- **Tmux clipboard on macOS**: `pbcopy` may not work inside nested tmux panes — use `reattach-to-user-namespace pbcopy` or write the handoff to a temp file and `open` it.
 - **Do not claim completion**: the handoff is "paste this into a fresh session to resume", not "work is done". Say "paused" or "mid-task", not "complete".
 - **Branch hygiene**: include `git status`/`git branch` output verbatim. Paraphrasing loses which files are staged vs modified, which matters on resume.
+
+## Autonomous mode (`/handoff-autonomously`)
+
+<!-- Merged from the handoff-autonomously skill 2026-08-16 (S7); that name
+still resolves — its SKILL.md is a stub pointing here. -->
+
+When the next session should continue **unattended**, produce the full handoff
+above PLUS a ready-to-arm `/goal`:
+
+1. **Derive the goal** with the `goal-prompt` skill (read its reference docs;
+   build the condition from this handoff's "What's Next" + verification steps).
+2. **Persist the goal in the doc** — append the full `/goal` line as a final
+   `## Autonomous goal` section and commit it with the doc. Chat scrollback is
+   lossy: a /goal that lived only in chat was once recovered from raw JSONL
+   (2026-08-05). The committed doc is the durable copy.
+3. **Walkthrough wiring** — the resume message must tell the goal session to:
+   (a) present NO AskUserQuestion cards while the goal is active — queue
+   human-shaped items per the `walkthrough` skill's unattended mode;
+   (b) end by appending a completion report (**Accomplished / Walkthrough
+   queue / Proposed next steps**) to the handoff doc;
+   (c) on the user's first message after completion, proactively deal the
+   walkthrough deck over that report.
+4. **Deliver TWO paste messages** (a slash command only executes at the start
+   of a message, and /clear wipes any active goal):
+
+```
+Message 1 — paste after /clear:
+
+Continuing work on <topic>. Handoff doc: <path>
+
+Branch: <branch> @ <sha>
+Phase: <phase>
+Next: <first item from What's Next>
+
+Read the handoff doc before responding.
+
+While the goal is active: no AskUserQuestion cards — queue manual steps,
+unverifiable outcomes, and unauthorized decisions instead (walkthrough skill,
+unattended mode). When the goal completes: append a completion report
+(Accomplished / Walkthrough queue / Proposed next steps) to the handoff doc,
+and on my first message afterward start the walkthrough deck over it.
+
+Message 2 — send once message 1's turn finishes:
+
+/goal <condition from goal-prompt>
+```
+
+Remind the user to pair with auto mode if the run must be truly unattended —
+/goal starts turns but does not change permissions.

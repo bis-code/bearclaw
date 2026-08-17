@@ -69,6 +69,24 @@ out=$(sh "$DIR/memory-dedup.sh" some-index "leann memory dedup candidate triple 
 check "injection-safe: ''' + backslash in hit text -> SKIP (not corrupted to NEW)" "$out" "SKIP"
 rm -f "$NASTY"
 
+# 9. search command FAILS (rc!=0, e.g. leann missing) -> UNVERIFIED third token,
+#    NOT a silent NEW (dead index must not look like novelty — 2026-08-16)
+export MEMORY_SEARCH_CMD='false'
+out=$(sh "$DIR/memory-dedup.sh" some-index "candidate text" 2>/dev/null)
+check "search rc!=0 -> UNVERIFIED" "$out" "UNVERIFIED"
+
+# 10. search runs but emits NOTHING (empty output, rc 0) -> UNVERIFIED
+export MEMORY_SEARCH_CMD='true'
+out=$(sh "$DIR/memory-dedup.sh" some-index "candidate text" 2>/dev/null)
+check "empty search output -> UNVERIFIED" "$out" "UNVERIFIED"
+
+# 11. healthy searches (cases 1-8) stay TWO-token: no UNVERIFIED on success path
+export MEMORY_SEARCH_CMD='printf "[]"'
+out=$(sh "$DIR/memory-dedup.sh" some-index "candidate text")
+printf '%s' "$out" | grep -q "UNVERIFIED" \
+  && { echo "FAIL: healthy empty-results run must NOT be UNVERIFIED"; FAIL=$((FAIL+1)); } \
+  || { echo "PASS: healthy run stays two-token"; PASS=$((PASS+1)); }
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -10,8 +10,8 @@ Maintain a solo **personal** project's roadmap as **GitHub Issues** — the dura
 auto-read tax). The convention + session discipline live in `rules/solo-project-roadmap.md`
 (loaded every session); this skill is the **HOW**.
 
-Projects you own and can write to. For a repo you don't own or can't write to, defer to
-whatever tracker it already uses and stay read-only. Reconcile against git, not memory.
+Personal projects only (your personal GitHub account, write access). `~/work` = read-only work tracker
+issues — never open or edit them. Reconcile against git, not memory.
 
 ## Pick the action
 

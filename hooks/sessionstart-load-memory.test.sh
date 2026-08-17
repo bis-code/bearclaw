@@ -27,7 +27,10 @@ bad(){ echo "FAIL $1 ($2)"; fail=1; }
 # GLOBAL_MEM_DIR fixture is active. EVERY invocation of $HOOK below MUST route
 # through this prefix (via `env $SAFE ...`) so no test can rebuild the real
 # semantic-memory index or write real freshness stamps.
-SAFE="MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX=test-memory-global XDG_STATE_HOME=$STATE_DIR"
+SAFE="MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX=test-memory-global XDG_STATE_HOME=$STATE_DIR LEANN_INDEX_HOME=$TMP/leann-idx"
+# The D2 slim fallback checks the index dir exists — create it so slim-mode
+# tests exercise slim behavior, not the fallback (T20/T21 cover the fallback).
+mkdir -p "$TMP/leann-idx/test-memory-global"
 
 # additionalContext for a given cwd, with global memory isolated to an empty dir
 # Existing full-load assertions pin the toggle OFF (env seam) so they're
@@ -151,6 +154,23 @@ printf '%s' "$slim_out" | grep -q "recall-served" \
 printf '%s' "$slim_out" | grep -q "Memory review queue" \
   && ok "t19 slim-on: capture nudge still present" \
   || bad "t19" "capture nudge missing in slim mode"
+
+# ---- D2 slim fallback: slim requested but index MISSING -> eager + notice ----
+run_slim_noidx(){ printf '{"cwd":"%s"}\n' "$MAIN" \
+  | env $SAFE GLOBAL_MEM_DIR="$SLIM_GLOBAL" MEMORY_SLIM_LOAD=1 MEMORY_STORE_DIR="$STORE_DIR" \
+    LEANN_INDEX_HOME="$TMP/leann-idx-absent" sh "$HOOK" 2>/dev/null \
+  | jq -r '.hookSpecificOutput.additionalContext // ""'; }
+noidx_out=$(run_slim_noidx)
+
+# T20: eager global content IS present despite slim=1 (fallback engaged)
+printf '%s' "$noidx_out" | grep -q "GLOBAL-MEM-CANARY" \
+  && ok "t20 slim+no-index: falls back to eager load" \
+  || bad "t20" "eager content missing — fallback did not engage"
+
+# T21: the fallback notice line is present
+printf '%s' "$noidx_out" | grep -q "recall index missing" \
+  && ok "t21 slim+no-index: notice line present" \
+  || bad "t21" "fallback notice missing"
 
 echo
 [ "$fail" -eq 0 ] && echo "ALL PASS" || echo "SOME FAILED"

@@ -108,6 +108,18 @@ printf '%s' "$out" | jq -e '.systemMessage' >/dev/null 2>&1 \
     && ok "t12 quiet session still gets handoff reminder" || bad "t12 handoff" "$out"
 # ─────────────────────────────────────────────────────────────────────────────
 
+# t13 (Q9 2026-08-17): band RESETS when context drops below the threshold —
+# a /compact shrinks context; without the reset the pre-compact high band
+# suppressed every post-compact warning until the old high-water was exceeded.
+mkusage 500 250 > "$T"          # 75% -> band 1 stored
+run sQ9 >/dev/null
+mkusage 300 100 > "$T"          # 40% (post-compact) -> silent + reset
+out=$(run sQ9); [ -z "$out" ] && ok "t13 post-compact below threshold silent" || bad "t13a" "$out"
+mkusage 400 250 > "$T"          # 65% again (band 0) -> must WARN again
+out=$(run sQ9)
+printf '%s' "$out" | jq -e '.systemMessage' >/dev/null 2>&1 \
+    && ok "t13 re-warns after compact reset" || bad "t13b" "band not reset: $out"
+
 echo
 [ "$fail" -eq 0 ] && echo "ALL PASS" || echo "SOME FAILED"
 exit "$fail"

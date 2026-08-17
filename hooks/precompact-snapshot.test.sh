@@ -1,7 +1,8 @@
 #!/bin/sh
-# Tests for precompact-snapshot.sh — the enriched snapshot must capture todos,
-# recently-edited files, and a transcript tail (not just git state). SNAPSHOT_DIR
-# seam keeps output out of the real ~/.claude/handoffs.
+# Tests for precompact-snapshot.sh — the SLIM snapshot (D4 2026-08-16) captures
+# git state + todos ONLY: the old recently-edited find walk and transcript tail
+# are asserted ABSENT. Also covers keep-N pruning. SNAPSHOT_DIR seam keeps
+# output out of the real ~/.claude/handoffs.
 HOOK="$(dirname "$0")/precompact-snapshot.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -33,14 +34,33 @@ SNAP=$(ls "$OUTDIR"/precompact-*.md 2>/dev/null | head -1)
 
 grep -q "FRESH-TODO-XYZ" "$SNAP" && ok "t2 captures last TodoWrite" || bad "t2" "fresh todo missing"
 grep -q "STALE-TODO" "$SNAP" && bad "t3" "older TodoWrite leaked (should be last-only)" || ok "t3 only last TodoWrite kept"
-grep -q "RECENT_EDIT_CANARY.txt" "$SNAP" && ok "t4 lists recently-edited file" || bad "t4" "recent file missing"
-grep -q "TASK-ALPHA" "$SNAP" && ok "t5 captures transcript tail text" || bad "t5" "tail text missing"
+# D4 slim assertions: the find-walk SECTION and transcript tail are GONE.
+# (grep the section headers, not the canary filename — an untracked canary
+# legitimately shows up in the git-status Working tree block.)
+grep -q "## Recently edited" "$SNAP" && bad "t4" "recently-edited section still present (D4 removed it)" || ok "t4 no recently-edited walk"
+grep -q "TASK-ALPHA" "$SNAP" && bad "t5" "transcript tail still present (D4 removed it)" || ok "t5 no transcript tail"
 grep -q "init commit" "$SNAP" && ok "t6 still captures git log" || bad "t6" "git log missing"
 
-# No transcript path -> still writes a file, todos/tail gracefully empty, exit 0
+# No transcript path -> still writes a file, todos gracefully empty, exit 0
 printf '{"cwd":"%s"}\n' "$WS" | SNAPSHOT_DIR="$TMP/out2" sh "$HOOK" >/dev/null 2>&1; rc2=$?
-mkdir -p "$TMP/out2" 2>/dev/null
 [ "$rc2" -eq 0 ] && ok "t7 no-transcript exits 0" || bad "t7" "$rc2"
+
+# t8: pruning — pre-seed KEEP+2 old snapshots with pinned mtimes; after one run
+# only SNAPSHOT_KEEP files remain and the survivors are the newest ones.
+PRUNE="$TMP/prune"; mkdir -p "$PRUNE"
+i=1
+while [ "$i" -le 5 ]; do
+    f="$PRUNE/precompact-2025010100000$i.md"
+    printf '# old %s\n' "$i" > "$f"
+    touch -t "20250101000$(printf '%02d' "$i")" "$f"
+    i=$((i + 1))
+done
+printf '{"cwd":"%s"}\n' "$WS" | SNAPSHOT_DIR="$PRUNE" SNAPSHOT_KEEP=3 sh "$HOOK" >/dev/null 2>&1
+COUNT=$(ls -1 "$PRUNE"/precompact-*.md 2>/dev/null | wc -l | tr -d ' ')
+[ "$COUNT" -eq 3 ] && ok "t8 pruning keeps SNAPSHOT_KEEP files (got $COUNT)" || bad "t8" "expected 3 files, got $COUNT"
+# the file the run just wrote must be among the survivors (newest kept)
+NEWEST=$(ls -1t "$PRUNE"/precompact-*.md 2>/dev/null | head -1)
+grep -q "Pre-compact auto-snapshot" "$NEWEST" && ok "t9 newest survivor is the fresh snapshot" || bad "t9" "fresh snapshot pruned"
 
 echo
 [ "$fail" -eq 0 ] && echo "ALL PASS" || echo "SOME FAILED"

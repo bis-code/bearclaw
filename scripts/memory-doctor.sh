@@ -93,7 +93,7 @@ scan_errors() {
   note
   note "## ERRORS.md ($lines lines, cap $ERRORS_CAP)"
   if [ "$lines" -gt "$ERRORS_CAP" ]; then
-    note "- over cap — rotate oldest entries to ERRORS.archive.md per rules/memory-hygiene.md (manual; auto-rotation not built — no journal is near the cap)"
+    note "- large journal — fine by policy (no length cap; corpus stager chunks per-entry). Prune only on scope-death; NEVER rotate to ERRORS.archive.md (it is excluded from recall). See memory-global/README.md → "ERRORS.md convention"."
   else
     note "- within cap"
   fi

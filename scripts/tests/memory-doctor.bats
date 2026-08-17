@@ -74,7 +74,7 @@ teardown() { rm -rf "$FIX"; }
 @test "scan_errors reports when ERRORS.md exceeds cap" {
   printf '# ERRORS\n\n## a\nx\n## b\ny\n## c\nz\n' > "$MD/ERRORS.md"
   ERRORS_CAP=3 run bash "$DOCTOR" "$MD"
-  [[ "$output" == *"over cap"* ]]
+  [[ "$output" == *"large journal"* ]]
 }
 
 @test "scan_errors says within cap for a small ERRORS.md" {

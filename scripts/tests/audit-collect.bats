@@ -6,9 +6,10 @@ setup() {
   FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/audit-fix.XXXXXX")"
   mkdir -p "$FIXTURE/setup/agents" "$FIXTURE/setup/skills/foo" \
            "$FIXTURE/setup/rules" "$FIXTURE/setup/hooks" \
-           "$FIXTURE/home"
+           "$FIXTURE/home" "$FIXTURE/work-home"
   export SETUP_REPO="$FIXTURE/setup"
   export CLAUDE_HOME="$FIXTURE/home"
+  export CLAUDE_WORK_HOME="$FIXTURE/work-home"
   export CLAUDE_PROJECT_ROOTS="$FIXTURE"
   export WINDOW_DAYS=30 MAX_HITS=50
   source "$BATS_TEST_DIRNAME/../audit-collect.sh"
@@ -166,15 +167,15 @@ teardown() { rm -rf "$FIXTURE"; }
 }
 
 @test "is_mcp_referenced: true when repo path appears in an .mcp.json" {
-  printf '%s' '{"mcpServers":{"x":{"args":["/home/x/mcp-servers/foo-mcp/build/index.js"]}}}' \
+  printf '%s' '{"mcpServers":{"x":{"args":["/Users/x/youtube-mcps/foo-mcp/build/index.js"]}}}' \
     > "$FIXTURE/a.mcp.json"
-  run is_mcp_referenced "/home/x/mcp-servers/foo-mcp" "$FIXTURE/a.mcp.json"
+  run is_mcp_referenced "/Users/x/youtube-mcps/foo-mcp" "$FIXTURE/a.mcp.json"
   [ "$status" -eq 0 ]
 }
 
 @test "is_mcp_referenced: false when repo path is absent" {
   printf '%s' '{"mcpServers":{}}' > "$FIXTURE/a.mcp.json"
-  run is_mcp_referenced "/home/x/dead-repo" "$FIXTURE/a.mcp.json"
+  run is_mcp_referenced "/Users/x/dead-repo" "$FIXTURE/a.mcp.json"
   [ "$status" -ne 0 ]
 }
 
@@ -191,9 +192,7 @@ teardown() { rm -rf "$FIXTURE"; }
 
 @test "audit-collect has no hardcoded user path" {
   REPO="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
-  # split so this assertion's own literal doesn't trip scripts/check-no-identity.sh
-  name="baicoia"; name="${name}nuionut"
-  run grep -c "$name" "$REPO/scripts/audit-collect.sh"
+  run grep -c 'baicoianuionut' "$REPO/scripts/audit-collect.sh"
   [ "$output" = "0" ]
 }
 
