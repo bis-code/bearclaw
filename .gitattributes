@@ -1,0 +1,12 @@
+* text=auto eol=lf
+*.sh text eol=lf
+*.zsh text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+bin/* text eol=lf
+git-hooks/* text eol=lf
+hooks/** text eol=lf
+scripts/** text eol=lf
+memory-global/MEMORY.md merge=union
+memory-global/ERRORS.md merge=union

@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 """PreToolUse guard: blocks broad destructive shell commands even under
 --dangerously-skip-permissions (PreToolUse hooks run regardless of permission mode).
-Root cause it addresses: 2026-06-08 bypassPermissions bg agent wiping the
-projects root.
+Root cause it addresses: 2026-06-08 bypassPermissions bg agent wiping ~/som.
 
 Parser-based: the command is split into segments on UNQUOTED separators, and a
 segment is only inspected when its real command word is destructive
-(rm / git clean / find / chmod / chown). So `echo "rm -rf ~/projects"`, comments,
-and docs are NOT flagged — only an actual `rm` invocation is. Fails OPEN on its
-own errors (never blocks legit work due to a bug). Allows narrow project-local
-deletes."""
+(rm / git clean / find / chmod / chown). So `echo "rm -rf ~/som"`, comments, and
+docs are NOT flagged — only an actual `rm` invocation is. Fails OPEN on its own
+errors (never blocks legit work due to a bug). Allows narrow project-local deletes."""
 import sys, json, re, os, shlex
 
-HOME = os.path.normpath(os.path.expanduser("~"))
-# Parent of the home dir (e.g. /Users on macOS, /home on Linux) — derived at
-# runtime rather than hardcoded so the check is portable across platforms and
-# doesn't bake in one machine's directory convention.
-HOME_ROOT = os.path.dirname(HOME) or "/"
+def _norm(p):
+    """Normalize a path to forward slashes so depth math survives Windows
+    backslash paths (C:\\Users\\x) and os.path.normpath's platform separator —
+    without this, home_depth() returned None on native Windows and the
+    shallow-home-delete guard silently failed OPEN (found 2026-08-16)."""
+    return os.path.normpath(p).replace("\\", "/")
+
+HOME = _norm(os.path.expanduser("~"))
 
 def deny(reason):
     print(json.dumps({"hookSpecificOutput": {
@@ -42,9 +43,10 @@ SKIP_PREFIX = {"sudo", "command", "time", "nice", "nohup", "env", "exec",
 
 def home_depth(t):
     rt = t.replace("${HOME}", HOME).replace("$HOME", HOME)
+    rt = rt.replace("%USERPROFILE%", HOME)
     if rt.startswith("~"):
         rt = HOME + rt[1:]
-    rt = os.path.normpath(rt)
+    rt = _norm(rt)
     if rt == HOME:
         return 0
     if rt.startswith(HOME + "/"):
@@ -79,12 +81,23 @@ def cmd_and_args(seg):
         toks = shlex.split(seg)
     except Exception:
         toks = seg.split()
+    extra = []
+    if "\\" in seg:
+        # POSIX shlex EATS backslashes (C:\Users\x tokenizes to C:Usersx),
+        # which hid Windows-style paths from every path check — fail-open on
+        # exactly the machine class added 2026-08-16. Re-tokenize non-POSIX
+        # and inspect those tokens too (analysis-only, strictly stricter).
+        try:
+            extra = shlex.split(seg, posix=False)
+        except Exception:
+            extra = seg.split()
     i = 0
     while i < len(toks):
         t = toks[i]
         if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", t) or t in SKIP_PREFIX:
             i += 1; continue
-        return os.path.basename(t), toks[i + 1:]
+        args = toks[i + 1:] + [x for x in extra if x not in toks]
+        return os.path.basename(t), args
     return None, []
 
 def short_flags(args):
@@ -116,7 +129,7 @@ for seg in segments(cmd):
                 deny(f"recursive force-delete of system path '{t}'")
             d = home_depth(t)
             if d is not None and d <= 2:
-                deny(f"recursive force-delete of shallow home path '{t}' (≤2 levels under ~, e.g. ~/projects). "
+                deny(f"recursive force-delete of shallow home path '{t}' (≤2 levels under ~, e.g. ~/som). "
                      f"Run it from inside the project with a relative path, or name a deeper subdir.")
             if re.match(r"^/[^/]*\*", t):
                 deny(f"recursive force-delete with a top-level glob '{t}'")
@@ -129,7 +142,7 @@ for seg in segments(cmd):
     elif base == "find":
         if ("-delete" in args) or ("-exec" in args and "rm" in args):
             root = args[0] if (args and not args[0].startswith("-")) else ""
-            if root == "/" or root.startswith((HOME_ROOT + "/", "~", "$HOME")):
+            if root == "/" or root.startswith(("/Users/", "~", "$HOME")):
                 deny("find -delete / -exec rm over an absolute or home root. Scope it to the project.")
 
     elif base in ("chmod", "chown"):
@@ -148,7 +161,7 @@ for seg in segments(cmd):
 
 # redirect-truncation over a home dotfile (ignore matches inside quotes; skip >> and N>)
 masked = re.sub(r"'[^']*'|\"[^\"]*\"", " ", cmd)
-if re.search(r"(?<![0-9>&])>(?!>)\s*(~|\$HOME|\$\{HOME\}|" + re.escape(HOME_ROOT) + r"/[^/]+)/\.\w", masked):
+if re.search(r"(?<![0-9>&])>(?!>)\s*(~|\$HOME|\$\{HOME\}|/Users/[^/]+)/\.\w", masked):
     deny("redirect-truncation over a home dotfile; edit the file instead of '>'.")
 
 sys.exit(0)

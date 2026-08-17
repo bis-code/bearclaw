@@ -15,7 +15,16 @@ search() {
 }
 
 JSON=$(search)
-[ -n "$JSON" ] || JSON="[]"
+RC=$?
+if [ "$RC" -ne 0 ] || [ -z "$JSON" ]; then
+  # Search could not run (leann missing or failing): SAY so instead of coercing
+  # to NEW — a dead index otherwise guarantees duplicate leakage while looking
+  # healthy (banked: dedup-new-verdict-is-index-aged). Consumers treat
+  # UNVERIFIED as "grep the memory dir manually before deciding".
+  echo "memory-dedup: search unavailable (rc=$RC) — verdict UNVERIFIED" >&2
+  printf '0.0 NEW UNVERIFIED\n'
+  exit 0
+fi
 
 # Compute max Jaccard similarity between candidate and each hit's .text field.
 # Guard: any parse/runtime error -> print "0.0" (fail-open -> NEW).

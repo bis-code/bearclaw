@@ -1,6 +1,8 @@
 ---
 name: monthly-setup-audit
-description: Use when the user asks to audit, review, health-check, or "spring-clean" the Claude Code setup/config — runs a read-only tiered fan-out over agents, skills, rules, conversations, memory, cost, and per-repo .claude dirs, then produces a dated risk-grouped report and applies only the safe fixes on confirmation. Intended to run roughly monthly.
+description: Use when the user asks to audit, review, health-check, or "spring-clean" the Claude Code setup/config — or asks "what's eating my context" / for a context budget — runs a read-only tiered fan-out over agents, skills, rules, context overhead, conversations, memory, and per-repo .claude dirs, then produces a dated risk-grouped report and applies only the safe fixes on confirmation. Intended to run roughly monthly.
+context: fork
+allowed-tools: Read, Glob, Grep, Bash
 ---
 
 # Monthly Setup Audit
@@ -19,7 +21,9 @@ A three-phase, READ-ONLY audit:
 1. Resolve paths (run in Bash):
 
    ```bash
-   SETUP_REPO="$HOME/som/personal-projects/claude-setup"
+   # Resolve the repo from the live install — clone paths differ per machine
+   # (clone paths differ per machine).
+   SETUP_REPO="$(dirname "$(readlink -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md")")"
    MONTH="$(date +%Y-%m)"
    REPORT="$SETUP_REPO/docs/audits/${MONTH}-claude-setup-audit.md"
    PREV="$(ls -1 "$SETUP_REPO"/docs/audits/*-claude-setup-audit.md 2>/dev/null | grep -v "$MONTH" | tail -1)"
@@ -41,11 +45,11 @@ A three-phase, READ-ONLY audit:
 3. When it completes, read `<REPORT>` and present to the user:
    - the Summary,
    - the **Safe / reversible** fix list (these are apply-eligible),
-   - a one-line count of Destructive and Out-of-scope items (review-only).
+   - a one-line count of Destructive and Work-scope items (review-only).
 
 4. **Gate — ask before changing anything.** Ask: "Apply the safe/reversible fixes now?"
    - On yes: apply ONLY the safe items, one at a time, showing each command before running it.
-   - **NEVER** auto-apply a change outside the Claude config directories (surface only).
+   - **NEVER** touch anything under `~/work` (surface only).
    - **NEVER** `git add -A`; stage specific files. **NEVER** auto-commit unless the user explicitly says to.
    - Destructive items: list them, do not execute — the user handles those manually.
 
@@ -62,6 +66,19 @@ A three-phase, READ-ONLY audit:
 ## Guardrails
 
 - The fan-out is strictly read-only; collectors only read.
+
+## Context-budget lane
+
+<!-- Folded from the context-budget skill 2026-08-16 (S7). Also serves the
+on-demand "do I have room?" ask — run just this lane then. -->
+
+Estimate always-loaded token overhead (`words x 1.3` prose, `chars/4` code),
+resolving symlinks and counting shared components once:
+- **rules/** (loaded EVERY session — the highest-leverage bucket) + **CLAUDE.md** chain: flag verbose/overlapping content; combined ceiling enforced by scripts/test-all.sh's size guard.
+- **Agent/skill descriptions** (always-loaded even when never run): flag >30 words.
+- **Agents >200 lines / skills >400 lines**: heavy per-spawn cost.
+- **MCP tool schemas** (~500 tok/tool): flag servers >20 tools or wrapping free CLIs; read BOTH `.mcp.json` and `~/.claude.json` mcpServers.
+Report per-bucket totals + top optimizations ranked by tokens saved.
 - Cost: 5 agents reading bounded evidence (~150–300k tokens), not raw transcripts.
 - If a lane returns no data, the report flags it under Coverage gaps — never silently dropped.
 - Cadence is manual. There is no auto-cron; the user triggers this.

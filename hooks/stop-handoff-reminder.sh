@@ -64,17 +64,21 @@ PCT=$((TOKENS * 100 / WINDOW))
 # Band-based dedup: once we cross START_PCT, only re-warn each time the
 # percentage climbs into a new BAND_PCT-wide band. Keeps Stop hooks quiet
 # between bands instead of firing every turn after the first crossing.
+# Below the threshold, RESET any stored band: a /compact shrinks the context,
+# and without the reset the pre-compact high-water band suppressed every
+# post-compact warning until context exceeded it again (found in the Q9
+# functional review, 2026-08-17 — e.g. warned at 90%, compacted, then silent
+# through the entire 60–89% climb).
+STATE_DIR="${CLAUDE_HANDOFF_STATE_DIR:-$HOME/.claude/state}"
+STATE_KEY="${SESSION_ID:-$(printf '%s' "$TRANSCRIPT" | shasum 2>/dev/null | cut -c1-12)}"
+STATE_FILE="$STATE_DIR/handoff-band-${STATE_KEY}"
 if [ "$PCT" -lt "$START_PCT" ]; then
+    rm -f "$STATE_FILE" 2>/dev/null
     exit 0
 fi
 
 BAND=$(( (PCT - START_PCT) / BAND_PCT ))
-
-STATE_DIR="${CLAUDE_HANDOFF_STATE_DIR:-$HOME/.claude/state}"
 mkdir -p "$STATE_DIR" 2>/dev/null
-# Identify session for state — prefer session_id, fall back to transcript path hash.
-STATE_KEY="${SESSION_ID:-$(printf '%s' "$TRANSCRIPT" | shasum 2>/dev/null | cut -c1-12)}"
-STATE_FILE="$STATE_DIR/handoff-band-${STATE_KEY}"
 
 # --- Context-gated memory-capture auto-trigger (once per session) -----------
 # Before the compaction boundary, if this session accumulated high-signal

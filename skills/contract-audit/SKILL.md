@@ -1,6 +1,8 @@
 ---
 name: contract-audit
 description: Use to audit API contract drift between a project's layers — e.g. an iOS/Swift client vs a Go chi backend — comparing the endpoints the client calls against the routes the server serves (paths + methods) with file:line evidence on both sides. Reads/writes the project's .contract-audit.yml descriptor and ASKS the user when layers are unclear — never guesses. Triggers include "contract audit", "/contract-audit", "is the app calling routes that don't exist", or API drift after backend changes.
+context: fork
+allowed-tools: Read, Glob, Grep, Bash
 ---
 
 # Contract Audit
@@ -34,8 +36,8 @@ contract_base: /v1
 layers:
   - name: ios
     type: swift-client      # v1 types: swift-client | chi-routes | openapi-spec
-    path: MyApp/
-    notes: endpoints in MyApp/Networking/Endpoints.swift
+    path: TripIt/
+    notes: endpoints in TripIt/Networking/Endpoints.swift
   - name: backend
     type: chi-routes
     path: backend/

@@ -70,13 +70,18 @@ tier is repo-local; only consider global if the lesson is true regardless of rep
 ```sh
 # repo-local index name = "<main-worktree-basename>-memory"
 "$HOME/.claude/hooks/lib/memory-dedup.sh" "<repo>-memory" "<candidate text>"
-# -> "<max-score> SKIP" or "<max-score> NEW"
+# -> "<max-score> SKIP" | "<max-score> NEW" | "0.0 NEW UNVERIFIED"
 ```
 
 - `SKIP` (≥ 0.85): a near-duplicate already exists. Do NOT add a second entry.
   Instead, if the existing entry is stale, **bump its `verified:` date** in place
   (memory-hygiene: update in place, don't annotate). Note the skip to the user.
 - `NEW`: it's novel — carry it to the gate.
+- `NEW UNVERIFIED` (third token present): the search could NOT run (leann
+  missing or index dead) — the NEW verdict is a guess, not a check. Before the
+  gate, dedup MANUALLY: Grep the target memory dir for 2-3 distinctive terms
+  from the candidate; treat as NEW only if the grep finds nothing. Mention the
+  degraded check on the gate card.
 
 ### 5. Gate — AskUserQuestion (keep / edit / drop)
 

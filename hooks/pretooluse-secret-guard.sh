@@ -15,7 +15,10 @@ CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 
 warn=""
 # A secret-bearing file path appears in the command.
-if printf '%s' "$CMD" | grep -qiE '(\.env([.][a-z0-9_]+)?|credentials[^[:space:]]*\.json|token[^[:space:]]*\.json|[a-z0-9_]*secret[a-z0-9_]*)'; then
+# The 'secret' arm requires a path-ish shape (extension or trailing slash) —
+# the bare-word match flagged any command merely CONTAINING "secret"
+# (e.g. `git log --grep secret`), drowning the signal (tightened 2026-08-16).
+if printf '%s' "$CMD" | grep -qiE '(\.env([.][a-z0-9_]+)?|credentials[^[:space:]]*\.json|token[^[:space:]]*\.json|[a-z0-9_.-]*secrets?[a-z0-9_.-]*(\.[a-z0-9]+|/))'; then
     warn="references a secrets-bearing file"
 fi
 # A raw key-like literal appears in the command text.

@@ -1,25 +1,20 @@
 #!/bin/sh
 # precompact-snapshot.sh — runs from PreCompact hook (user scope, all projects).
 #
-# Hooks cannot invoke slash commands like /handoff, so this captures a
-# working-memory snapshot to ~/.claude/handoffs/precompact-<ts>.md right before
-# context compaction discards the conversation. Captures:
-#   1. git context (repo / branch / working tree / recent commits)
-#   2. current TodoWrite todos      (last TodoWrite in the transcript)
-#   3. recently-edited files        (find <cwd> -mmin -RECENT_MINS, noise filtered)
-#   4. transcript tail              (last TAIL_MSGS user/assistant text exchanges)
+# Captures a SLIM working-memory snapshot to ~/.claude/handoffs/precompact-<ts>.md
+# right before context compaction: git context + current TodoWrite todos. The
+# old full-tree `find -mmin` walk and transcript tail were dropped 2026-08-16
+# (D4): native compaction summaries carry conversational continuity; this file
+# only preserves the repo-state facts a summary tends to lose. Keeps the last
+# 10 snapshots (older ones pruned here) so the dir stops accreting forever.
 #
 # Reads the PreCompact stdin JSON for `.cwd` and `.transcript_path`.
 # Always exits 0 — compaction must not be blocked by a snapshot failure.
-# Read by future sessions to recover where the previous one left off.
 #
-# Env overrides (tests): RECENT_MINS (default 120), TAIL_MSGS (default 6),
-#                        SNAPSHOT_DIR (default ~/.claude/handoffs)
+# Env overrides (tests): SNAPSHOT_DIR (default ~/.claude/handoffs),
+#                        SNAPSHOT_KEEP (default 10)
 
 set +e  # never propagate non-zero — a sub-command failure must not bubble up
-
-RECENT_MINS="${RECENT_MINS:-120}"
-TAIL_MSGS="${TAIL_MSGS:-6}"
 
 INPUT=$(cat 2>/dev/null)
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
@@ -47,25 +42,6 @@ if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
           | select(.type=="tool_use" and .name=="TodoWrite") | .input.todos ]
         | last // empty
         | .[]? | "- [\(.status // "?")] \(.content // .activeForm // "")"
-    ' "$TRANSCRIPT" 2>/dev/null)
-fi
-
-# --- recently-edited files under CWD (noise filtered) ---
-RECENT_FILES=$(find "$CWD" -type f -mmin "-$RECENT_MINS" 2>/dev/null \
-    | grep -vE '/(\.git|node_modules|\.build|build|DerivedData|dist|\.next|target|\.venv|__pycache__)/' \
-    | head -30)
-
-# --- transcript tail: last TAIL_MSGS user/assistant text snippets ---
-TAIL_TEXT=""
-if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
-    TAIL_TEXT=$(jq -rs --argjson n "$TAIL_MSGS" '
-        [ .[]
-          | (.message.role // .type) as $role
-          | .message.content? // empty
-          | (if type=="array" then .[] else {type:"text", text:.} end)
-          | select(.type=="text" and (.text // "") != "")
-          | "**\($role):** \((.text | gsub("\\s+";" "))[0:280])" ]
-        | .[-$n:] | .[]
     ' "$TRANSCRIPT" 2>/dev/null)
 fi
 
@@ -99,16 +75,6 @@ fi
     fi
     echo '```'
     echo ""
-    echo "## Recently edited (last ${RECENT_MINS} min)"
-    echo ""
-    echo '```'
-    if [ -n "$RECENT_FILES" ]; then
-        echo "$RECENT_FILES"
-    else
-        echo "(none)"
-    fi
-    echo '```'
-    echo ""
     echo "## Last 5 commits"
     echo ""
     echo '```'
@@ -119,18 +85,16 @@ fi
     fi
     echo '```'
     echo ""
-    echo "## Conversation tail (last ${TAIL_MSGS} text exchanges)"
-    echo ""
-    if [ -n "$TAIL_TEXT" ]; then
-        echo "$TAIL_TEXT"
-    else
-        echo "_(no transcript text available)_"
-    fi
-    echo ""
     echo "---"
     echo ""
     echo "Auto-snapshot taken just before context compaction. For a full"
     echo "conversational handoff, run \`/handoff\` BEFORE the next compact."
 } > "$OUT" 2>/dev/null
+
+# --- prune: keep the newest SNAPSHOT_KEEP snapshots, delete the rest ---
+KEEP="${SNAPSHOT_KEEP:-10}"
+ls -1t "$OUT_DIR"/precompact-*.md 2>/dev/null | tail -n +"$((KEEP + 1))" | while IFS= read -r old; do
+    rm -f "$old" 2>/dev/null
+done
 
 exit 0

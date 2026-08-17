@@ -16,15 +16,22 @@
 #                        writing — see git history for the race this caused) and
 #                        not in the user's real ~/.local/state/claude-memory.
 
+#   LEANN_INDEX_HOME  — the D2 slim fallback checks the recall index exists
+#                        before honoring slim mode; point it at a fixture dir
+#                        containing test-memory-global so slim tests exercise
+#                        slim behavior (not the eager fallback).
+
 HOOK() { printf '%s' "$1" | GLOBAL_MEM_DIR="$GMD" ERRORS_TAIL="${ETAIL:-5}" \
   MEMORY_SLIM_LOAD="${SLIM:-0}" MEMORY_STORE_DIR="$STORE" \
   MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX="test-memory-global" XDG_STATE_HOME="$BATS_FILE_TMPDIR/state" \
+  LEANN_INDEX_HOME="$FIX/leann-idx" \
   sh "$BATS_TEST_DIRNAME/../../hooks/sessionstart-load-memory.sh"; }
 
 setup() {
   FIX="$(mktemp -d "${TMPDIR:-/tmp}/ssm.XXXXXX")"
   GMD="$FIX/global"; mkdir -p "$GMD"
   STORE="$FIX/store"; mkdir -p "$STORE/_pending/raw"
+  mkdir -p "$FIX/leann-idx/test-memory-global"
 }
 teardown() { rm -rf "$FIX"; }
 

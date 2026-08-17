@@ -23,4 +23,19 @@ unset MEMORY_BUILD_CMD
 out=$(sh "$TMP2/memory-index-freshness.sh" testidx-default "$SRC2")
 echo "$out" | grep -q SENTINEL_DEFAULT_PATH || { echo "FAIL: unset MEMORY_BUILD_CMD should invoke default builder"; exit 1; }
 
+# Case 5: LOCK HELD by another build -> second run exits cleanly WITHOUT building
+TMP3=$(mktemp -d); SRC3="$TMP3/src"; mkdir -p "$SRC3"; printf 'w' > "$SRC3/c.md"
+export XDG_STATE_HOME="$TMP3/state"
+export MEMORY_BUILD_CMD="echo BUILT"
+mkdir -p "$TMP3/state/claude-memory/lockidx.lock"
+out=$(sh "$DIR/memory-index-freshness.sh" lockidx "$SRC3"); rc=$?
+[ "$rc" -eq 0 ] || { echo "FAIL: locked run should exit 0 (got $rc)"; exit 1; }
+echo "$out" | grep -q BUILT && { echo "FAIL: locked run must NOT build"; exit 1; }
+# lock released by the OTHER holder -> next run builds
+rmdir "$TMP3/state/claude-memory/lockidx.lock"
+out=$(sh "$DIR/memory-index-freshness.sh" lockidx "$SRC3")
+echo "$out" | grep -q BUILT || { echo "FAIL: post-lock run should build"; exit 1; }
+# lock is released after OUR build too (trap) -> immediate re-run possible
+[ -d "$TMP3/state/claude-memory/lockidx.lock" ] && { echo "FAIL: lock leaked after build"; exit 1; }
+
 echo "PASS"

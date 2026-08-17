@@ -1,0 +1,41 @@
+#!/bin/sh
+# claude-setup-sync — one command to bring THIS machine current with the repo:
+# fetch → refuse-on-dirty → pull --ff-only → install.sh → doctor.
+# Run when sitting down at a machine another machine may have pushed past.
+# --dry-run shows what would happen. Exit: 0 synced · 1 blocked/failed.
+set -u
+DRY=0
+[ "${1:-}" = "--dry-run" ] && DRY=1
+
+# Resolve the repo from the live install (no hardcoded clone path — machines
+# differ: ~/som/... on macOS, ~/projects/... on WSL).
+CM="$(readlink -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" 2>/dev/null)"
+REPO="$(dirname "$CM")"
+[ -n "$REPO" ] && [ -d "$REPO/.git" ] || { echo "FAIL cannot resolve repo from ~/.claude/CLAUDE.md symlink — is claude-setup installed?"; exit 1; }
+cd "$REPO" || exit 1
+echo "repo: $REPO"
+
+git fetch --quiet || echo "WARN fetch failed (offline?) — comparing against last-known remote"
+
+if [ -n "$(git status --porcelain)" ]; then
+  echo "FAIL dirty tree — commit or stash first (sync never merges over local edits):"
+  git status --short | head -10
+  exit 1
+fi
+
+BEHIND=$(git rev-list --count "HEAD..@{u}" 2>/dev/null || echo 0)
+AHEAD=$(git rev-list --count "@{u}..HEAD" 2>/dev/null || echo 0)
+echo "state: $AHEAD ahead, $BEHIND behind upstream"
+[ "$AHEAD" -gt 0 ] && echo "note: $AHEAD unpushed commit(s) — push so other machines see them"
+
+if [ "$DRY" -eq 1 ]; then
+  [ "$BEHIND" -gt 0 ] && echo "would: git pull --ff-only && ./install.sh && bin/claude-setup-doctor" \
+                      || echo "would: nothing to pull (re-run without --dry-run to force install.sh + doctor anyway)"
+  exit 0
+fi
+
+if [ "$BEHIND" -gt 0 ]; then
+  git pull --ff-only || { echo "FAIL pull --ff-only (diverged?) — resolve manually"; exit 1; }
+fi
+./install.sh || { echo "FAIL install.sh"; exit 1; }
+bin/claude-setup-doctor

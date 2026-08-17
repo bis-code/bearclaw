@@ -1,14 +1,10 @@
 ---
 name: build-error-resolver
 model: sonnet
-description: "Use when a build or CI run fails (Go/Java/Swift/.NET/Python/TS/lint). Detects the language + build tool first, applies the matching per-language playbook, reads build output, fixes root causes with minimal diffs, and defers version-specific coordinates to context7."
-allowed_tools:
-  - Read
-  - Glob
-  - Grep
-  - Bash
-  - Edit
-  - Write
+effort: medium
+memory: user
+description: "Use when a build, CI run, or lint fails — detects the language and build tool, reads the failure output, fixes root causes with minimal diffs."
+tools: Read, Glob, Grep, Bash, Edit, Write
 ---
 
 # Build Error Resolver Agent

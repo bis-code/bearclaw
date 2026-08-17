@@ -1,0 +1,72 @@
+#!/bin/sh
+# claude-plugin-sync — reconcile marketplaces + plugins from settings.json.
+# settings.json is the single source of truth; this script is the single writer.
+# The claude CLI does NOT honor extraKnownMarketplaces on install, and exits 0
+# on failed installs (both proven 2026-08-16) — hence explicit adds + output
+# pattern checks. Forces HTTPS for github clones per-subprocess (no global
+# gitconfig mutation). POSIX sh: runs on WSL, macOS, and Windows Git Bash.
+#
+# Usage: claude-plugin-sync [--dry-run] [settings.json]
+# Exit code = number of failures.
+set -u
+
+DRY=0
+if [ "${1:-}" = "--dry-run" ]; then DRY=1; shift; fi
+SETTINGS="${1:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json}"
+
+command -v jq >/dev/null 2>&1 || { echo "FAIL jq required"; exit 1; }
+command -v claude >/dev/null 2>&1 || { echo "FAIL claude CLI required (install.sh installs it)"; exit 1; }
+[ -f "$SETTINGS" ] || { echo "FAIL settings not found: $SETTINGS"; exit 1; }
+
+GIT_CONFIG_COUNT=1
+GIT_CONFIG_KEY_0="url.https://github.com/.insteadOf"
+GIT_CONFIG_VALUE_0="git@github.com:"
+export GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+
+FAILS=0
+
+# NOTE: every jq output is piped through tr -d '\r' — jq on Windows emits
+# CRLF, and Git Bash command substitution KEEPS the \r, so names silently
+# become "superpowers@...\r": greps miss, CLI lookups fail with clean-looking
+# error text (found via sh -x on 2026-08-16).
+echo "== marketplaces (extraKnownMarketplaces, github sources) =="
+for repo in $(jq -r '.extraKnownMarketplaces // {} | to_entries[]
+                     | select(.value.source.source=="github") | .value.source.repo' "$SETTINGS" | tr -d '\r'); do
+  if [ "$DRY" -eq 1 ]; then echo "would ensure marketplace: $repo"; continue; fi
+  OUT=$(claude plugin marketplace add "$repo" 2>&1)
+  case "$OUT" in
+    *"Successfully added"*|*already*) echo "ok   marketplace $repo" ;;
+    *) echo "FAIL marketplace $repo:"; printf '%s\n' "$OUT" | tail -3; FAILS=$((FAILS+1)) ;;
+  esac
+done
+
+echo "== plugins (enabledPlugins == true) =="
+INSTALLED=$(claude plugin list 2>/dev/null)
+for p in $(jq -r '.enabledPlugins // {} | to_entries[] | select(.value==true) | .key' "$SETTINGS" | tr -d '\r'); do
+  if printf '%s' "$INSTALLED" | grep -qF "$p"; then
+    echo "ok   $p (installed)"
+    continue
+  fi
+  if [ "$DRY" -eq 1 ]; then echo "would install: $p"; continue; fi
+  OUT=$(claude plugin install "$p" 2>&1)
+  case "$OUT" in
+    *"Successfully installed"*) echo "ok   $p (installed now)"; continue ;;
+  esac
+  # Stale marketplace cache: "not found in marketplace ... out of date" —
+  # update that marketplace and retry once (hit on Windows 2026-08-16, whose
+  # claude-plugins-official cache predated three plugins).
+  case "$OUT" in
+    *"out of date"*|*"not found in marketplace"*)
+      mk="${p##*@}"
+      claude plugin marketplace update "$mk" >/dev/null 2>&1
+      OUT=$(claude plugin install "$p" 2>&1)
+      case "$OUT" in
+        *"Successfully installed"*) echo "ok   $p (after marketplace update)"; continue ;;
+      esac ;;
+  esac
+  echo "FAIL $p:"; printf '%s\n' "$OUT" | tail -3; FAILS=$((FAILS+1))
+done
+
+if [ "$FAILS" -eq 0 ]; then echo "sync complete — 0 failures"
+else echo "sync complete — $FAILS FAILURE(S)"; fi
+exit "$FAILS"

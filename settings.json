@@ -102,6 +102,17 @@
             "type": "command",
             "command": "$HOME/.claude/hooks/sessionstart-heal-settings.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/sessionstart-config-drift.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/sessionstart-roadmap-nudge.sh",
+            "timeout": 10,
+            "async": false
           }
         ]
       }
@@ -157,7 +168,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/guard-destructive.py"
+            "command": "python3 ~/.claude/hooks/guard-destructive.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "A git push is about to run: $ARGUMENTS. Verify from this session's evidence that the project's test suite (or the repo's pre-push gate) was run AFTER the most recent code change and passed. If tests were only claimed but not run, or code changed after the last passing run, report not-ok with a one-line reason; otherwise ok. Repos with their own pre-push test hook (like claude-setup) count as verified-by-gate: ok.",
+            "if": "Bash(git push*)",
+            "timeout": 60,
+            "statusMessage": "Verifying test evidence before push..."
           }
         ]
       }
@@ -198,7 +222,8 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/notify-attention.sh",
-            "timeout": 5
+            "timeout": 5,
+            "async": true
           }
         ]
       }
@@ -219,13 +244,9 @@
           },
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/cost-tracker.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
             "command": "$HOME/.claude/hooks/stop-memory-index-rebuild.sh",
-            "timeout": 5
+            "timeout": 5,
+            "async": true
           },
           {
             "type": "command",
@@ -267,6 +288,46 @@
             "command": "$HOME/.claude/hooks/postcompact-resume.sh",
             "timeout": 10,
             "statusMessage": "Resuming after compact..."
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SETTINGS_HEAL_SILENT=1 $HOME/.claude/hooks/sessionstart-heal-settings.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/stop-handoff-reminder.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/stop-memory-index-rebuild.sh",
+            "timeout": 5,
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/stop-memory-signal.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "SETTINGS_HEAL_SILENT=1 $HOME/.claude/hooks/sessionstart-heal-settings.sh",
+            "timeout": 5
           }
         ]
       }

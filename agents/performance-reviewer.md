@@ -1,12 +1,10 @@
 ---
 name: performance-reviewer
 model: sonnet
-description: "Performance reviewer. Detects N+1 queries, unbounded results, blocking operations, missing indexes, and resource leaks."
-allowed_tools:
-  - Read
-  - Glob
-  - Grep
-  - Bash
+effort: low
+memory: user
+description: "Use when changes touch queries, loops over I/O, or hot paths — detects N+1 queries, unbounded results, blocking operations, missing indexes, resource leaks. Read-only; reports findings."
+tools: Read, Glob, Grep, Bash
 ---
 
 # Performance Reviewer Agent

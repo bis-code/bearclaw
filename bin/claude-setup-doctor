@@ -19,6 +19,16 @@ warn()  { printf '  \033[33mWARN\033[0m  %s\n' "$1"; WARN=$((WARN+1)); }
 fail()  { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; FAIL=$((FAIL+1)); }
 group() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
+group "0. Required tools"
+for t in git jq python3; do
+    if command -v "$t" >/dev/null 2>&1; then pass "$t"
+    else fail "$t missing — required; scripts/bootstrap-deps.sh installs it"; fi
+done
+for t in gh curl node uv leann bats; do
+    if command -v "$t" >/dev/null 2>&1; then pass "$t"
+    else warn "$t missing (gh=marketplace checks, node=deep-think server, uv/leann=memory recall, bats=2 test suites) — scripts/bootstrap-deps.sh installs all"; fi
+done
+
 group "1. Symlinks ($DEST → $REPO)"
 for entry in CLAUDE.md .mcp.json settings.json statusline.sh rules skills hooks agents; do
     dst="$DEST/$entry"; src="$REPO/$entry"
@@ -81,11 +91,20 @@ cd "$REPO"
 if [ -z "$(git status --porcelain 2>/dev/null)" ]; then pass "working tree clean"
 else warn "uncommitted changes in repo (commit them — there is no autopush)"; fi
 
+# Throttled fetch (once/hour) so ahead/behind sees the OTHER machine's pushes —
+# without it "in sync" was vacuously true against a stale remote ref.
+FETCH_STAMP="${XDG_STATE_HOME:-$HOME/.local/state}/claude-memory/doctor.fetch.stamp"
+mkdir -p "$(dirname "$FETCH_STAMP")" 2>/dev/null
+if [ -z "$(find "$FETCH_STAMP" -mmin -60 2>/dev/null)" ]; then
+    git fetch --quiet 2>/dev/null && touch "$FETCH_STAMP"
+fi
 UPSTREAM=$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null)
 if [ -n "$UPSTREAM" ]; then
     AHEAD=$(git rev-list --count "$UPSTREAM..HEAD" 2>/dev/null || echo 0)
     BEHIND=$(git rev-list --count "HEAD..$UPSTREAM" 2>/dev/null || echo 0)
-    [ "$AHEAD" -eq 0 ] && [ "$BEHIND" -eq 0 ] && pass "in sync with $UPSTREAM" || warn "$AHEAD ahead, $BEHIND behind $UPSTREAM"
+    if [ "$AHEAD" -eq 0 ] && [ "$BEHIND" -eq 0 ]; then pass "in sync with $UPSTREAM (fetched)"
+    elif [ "$BEHIND" -gt 0 ]; then warn "$BEHIND BEHIND $UPSTREAM — run git pull (another machine pushed newer config/memory)${AHEAD:+; $AHEAD ahead}"
+    else warn "$AHEAD ahead of $UPSTREAM — push so other machines see it"; fi
 fi
 
 group "7. Marketplace reachability (extraKnownMarketplaces)"
@@ -109,6 +128,112 @@ if command -v jq >/dev/null 2>&1; then
             *) warn "$name → unknown marketplace source type: ${type:-none}" ;;
         esac
     done < <(jq -r '.extraKnownMarketplaces // {} | to_entries[] | "\(.key)\t\(.value.source.source // "?")\t\(.value.source.repo // .value.source.path // "")"' "$SETTINGS" 2>/dev/null)
+fi
+
+group "8. Claude CLI (version + hook-key compatibility)"
+MIN_CLAUDE_VERSION="$(grep -m1 '^MIN_CLAUDE_VERSION=' "$REPO/install.sh" | cut -d'"' -f2)"
+# Hook events known to claude >= MIN_CLAUDE_VERSION. An event key the running
+# CLI does not know makes it DISCARD the entire settings.json (observed
+# 2026-08-16: v2.1.29 vs PostCompact — every hook silently dead). Adding a new
+# event to settings.json requires consciously updating this list + the constant.
+KNOWN_HOOK_EVENTS="PreToolUse PostToolUse PostToolUseFailure PostToolBatch Notification UserPromptSubmit UserPromptExpansion SessionStart SessionEnd Stop StopFailure SubagentStart SubagentStop PreCompact PostCompact PermissionRequest PermissionDenied Setup TeammateIdle TaskCreated TaskCompleted Elicitation ElicitationResult ConfigChange WorktreeCreate WorktreeRemove InstructionsLoaded CwdChanged FileChanged DirectoryAdded MessageDisplay"
+if ! command -v claude >/dev/null 2>&1; then
+    fail "claude CLI not on PATH — install.sh installs it (or https://claude.ai/install.sh)"
+else
+    CUR="$(claude --version 2>/dev/null | awk '{print $1; exit}')"
+    if [ -z "$CUR" ]; then
+        warn "claude --version output unparseable"
+    elif [ -n "$MIN_CLAUDE_VERSION" ] && [ "$(printf '%s\n%s\n' "$MIN_CLAUDE_VERSION" "$CUR" | sort -V | head -1)" = "$CUR" ] && [ "$CUR" != "$MIN_CLAUDE_VERSION" ]; then
+        fail "claude $CUR < required $MIN_CLAUDE_VERSION — a too-old CLI rejects newer hook keys and discards the WHOLE settings.json. Run: claude update"
+    else
+        pass "claude $CUR >= required ${MIN_CLAUDE_VERSION:-unset}"
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        UNKNOWN=""
+        for k in $(jq -r '.hooks // {} | keys[]' "$REPO/settings.json" 2>/dev/null); do
+            case " $KNOWN_HOOK_EVENTS " in
+                *" $k "*) ;;
+                *) UNKNOWN="$UNKNOWN $k" ;;
+            esac
+        done
+        if [ -n "$UNKNOWN" ]; then
+            fail "settings.json hook key(s) not in the known-events allowlist:$UNKNOWN — verify CLI support, then update KNOWN_HOOK_EVENTS + MIN_CLAUDE_VERSION"
+        else
+            pass "all settings.json hook keys within the known-events allowlist"
+        fi
+    fi
+fi
+
+group "9. Plugins (enabledPlugins vs installed)"
+if command -v claude >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    INSTALLED=$(claude plugin list 2>/dev/null)
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        if printf '%s' "$INSTALLED" | grep -qF "$p"; then pass "$p installed"
+        else fail "$p enabled but NOT installed — run bin/claude-plugin-sync"; fi
+    done < <(jq -r '.enabledPlugins // {} | to_entries[] | select(.value==true) | .key' "$REPO/settings.json" 2>/dev/null)
+else
+    warn "claude or jq unavailable — plugin parity not checked"
+fi
+
+group "10. Memory index"
+IDXNAME="$(basename "$DEST" | sed 's/^\.//')-memory-global"
+MEMSTATE="${XDG_STATE_HOME:-$HOME/.local/state}/claude-memory"
+if ! command -v leann >/dev/null 2>&1; then
+    warn "leann not installed — recall disabled (recipe: memory-global/ERRORS.md incl. Linux/CPU notes)"
+elif [ -f "$MEMSTATE/$IDXNAME.build.err" ]; then
+    fail "index build failing: $(head -1 "$MEMSTATE/$IDXNAME.build.err") (log: $MEMSTATE/$IDXNAME.build.log)"
+elif [ ! -f "$MEMSTATE/$IDXNAME.built" ]; then
+    warn "no build stamp yet — first build runs at next session start"
+else
+    NEWEST=$(find "$DEST/memory-global/" -name '*.md' -newer "$MEMSTATE/$IDXNAME.built" 2>/dev/null | head -1)
+    if [ -z "$NEWEST" ]; then pass "index fresh (stamp newer than corpus)"
+    else warn "index stale (memory edited since last build — rebuilds at next session start)"; fi
+fi
+
+# Audit cadence: compare the newest docs/audits filename date (YYYY-MM) to now —
+# file mtimes are useless across clones. >45 days ≈ months apart >= 2.
+LATEST_AUDIT=$(ls -1 "$REPO"/docs/audits/2*-*audit*.md 2>/dev/null | sort | tail -1)
+if [ -n "$LATEST_AUDIT" ]; then
+    A_Y=$(basename "$LATEST_AUDIT" | cut -d- -f1); A_M=$(basename "$LATEST_AUDIT" | cut -d- -f2)
+    N_Y=$(date +%Y); N_M=$(date +%m)
+    MONTHS_APART=$(( (N_Y*12 + ${N_M#0}) - (A_Y*12 + ${A_M#0}) ))
+    if [ "$MONTHS_APART" -ge 2 ]; then
+        warn "latest setup audit is $(basename "$LATEST_AUDIT") (~$MONTHS_APART months old) — run monthly-setup-audit"
+    else
+        pass "setup audit cadence ok ($(basename "$LATEST_AUDIT"))"
+    fi
+fi
+
+group "11. Line endings (CRLF poisoning)"
+# A Windows-side checkout copied into WSL/macOS breaks every #!/bin/sh hook
+# with invisible \r. .gitattributes prevents NEW poisoning; this catches an
+# already-poisoned tree in seconds instead of via mysterious hook failures.
+CRLF_HITS=$(git -C "$REPO" grep -lI $'\r' -- . 2>/dev/null | head -5)
+if [ -z "$CRLF_HITS" ]; then
+    pass "no CRLF in tracked text files"
+else
+    fail "CRLF in tracked files: $(printf '%s' "$CRLF_HITS" | tr '\n' ' ') — fix: git -C $REPO add --renormalize . && git -C $REPO checkout -- . (or re-clone inside WSL)"
+fi
+
+group "12. bearclaw drift (public twin)"
+BEARCLAW="${BEARCLAW_CLONE:-}"
+if [ -z "$BEARCLAW" ]; then
+    for c in "$REPO/../bearclaw" "$HOME/projects/bearclaw" "$HOME/som/personal-projects/bearclaw"; do
+        [ -d "$c/.git" ] && BEARCLAW="$c" && break
+    done
+fi
+if [ -z "$BEARCLAW" ]; then
+    pass "no local bearclaw clone — drift not checked on this machine"
+else
+    DRIFT_OUT=$(bash "$REPO/scripts/bearclaw-drift.sh" "$BEARCLAW" 2>/dev/null)
+    DRIFT_N=$(printf '%s' "$DRIFT_OUT" | grep -cE '^\s+[a-zA-Z0-9._/-]+' 2>/dev/null)
+    DRIFT_MAX="${BEARCLAW_DRIFT_MAX:-10}"
+    if [ "${DRIFT_N:-0}" -gt "$DRIFT_MAX" ]; then
+        warn "bearclaw drift: ~$DRIFT_N files out of sync (> $DRIFT_MAX) — run the sync pass (docs/bearclaw-sync.md)"
+    else
+        pass "bearclaw drift within threshold (~${DRIFT_N:-0} files)"
+    fi
 fi
 
 printf '\n\033[1mSummary:\033[0m \033[32m%d pass\033[0m, \033[33m%d warn\033[0m, \033[31m%d fail\033[0m\n' "$PASS" "$WARN" "$FAIL"

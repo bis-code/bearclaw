@@ -7,8 +7,7 @@
 #
 # HOME is faked per-test (never the real machine home) so assertions never
 # depend on, or leak, this machine's actual directory layout, and so paths
-# are built at runtime rather than hardcoded — a literal machine-specific
-# home-directory prefix here would itself trip scripts/check-no-identity.sh.
+# are built at runtime rather than hardcoded.
 
 GUARD="$BATS_TEST_DIRNAME/../../hooks/guard-destructive.py"
 

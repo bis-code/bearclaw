@@ -1,15 +1,10 @@
 ---
 name: architect-reviewer
 model: opus
-description: "Architecture reviewer. Analyzes module boundaries, dependency direction, coupling, and pattern consistency."
-allowed_tools:
-  - Read
-  - Glob
-  - Grep
-  - Bash
-  - mcp__plugin_deep-think_deep-think__think
-  - mcp__plugin_deep-think_deep-think__reflect
-  - mcp__plugin_deep-think_deep-think__strategize
+effort: medium
+memory: user
+description: "Use for system-level review of cross-module changes — module boundaries, dependency direction, coupling, pattern consistency, API-surface breaks. Complements line-level review. Read-only; reports findings."
+tools: Read, Glob, Grep, Bash, mcp__plugin_deep-think_deep-think__think, mcp__deep-think__think, mcp__plugin_deep-think_deep-think__reflect, mcp__deep-think__reflect, mcp__plugin_deep-think_deep-think__strategize, mcp__deep-think__strategize
 ---
 
 # Architecture Reviewer Agent
