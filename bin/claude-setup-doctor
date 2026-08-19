@@ -219,9 +219,10 @@ fi
 group "12. bearclaw drift (public twin)"
 BEARCLAW="${BEARCLAW_CLONE:-}"
 if [ -z "$BEARCLAW" ]; then
-    for c in "$REPO/../bearclaw" "$HOME/projects/bearclaw" "$HOME/som/personal-projects/bearclaw"; do
-        [ -d "$c/.git" ] && BEARCLAW="$c" && break
-    done
+    # Only the sibling location, which is relative to this repo and so holds
+    # on any layout. Anywhere else: set BEARCLAW_CLONE. Guessing absolute
+    # paths here just encodes one machine's directory tree.
+    [ -d "$REPO/../bearclaw/.git" ] && BEARCLAW="$REPO/../bearclaw"
 fi
 if [ -z "$BEARCLAW" ]; then
     pass "no local bearclaw clone — drift not checked on this machine"
