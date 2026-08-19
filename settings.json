@@ -178,7 +178,7 @@
         "hooks": [
           {
             "type": "agent",
-            "prompt": "A git push is about to run: $ARGUMENTS. Verify from this session's evidence that the project's test suite (or the repo's pre-push gate) was run AFTER the most recent code change and passed. If tests were only claimed but not run, or code changed after the last passing run, report not-ok with a one-line reason; otherwise ok. Repos with their own pre-push test hook (like claude-setup) count as verified-by-gate: ok.",
+            "prompt": "FIRST, decide whether this command is actually a git push: $ARGUMENTS. This hook matches every Bash command, so most invocations are NOT pushes. If the command does not invoke `git push` (rsync, scp, tar, cp, ssh, docker, a test run, anything else), reply ok immediately and do not evaluate test evidence \u2014 a file copy or remote command is not a code change and has no test gate. ONLY if it is a real `git push`: verify from this session's evidence that the project's test suite (or the repo's pre-push gate) ran AFTER the most recent code change and passed. If tests were only claimed but not run, or code changed after the last passing run, report not-ok with a one-line reason; otherwise ok. Repos with their own pre-push test hook (like claude-setup) count as verified-by-gate: ok.",
             "if": "Bash(git push*)",
             "timeout": 60,
             "statusMessage": "Verifying test evidence before push..."

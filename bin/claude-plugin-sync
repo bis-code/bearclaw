@@ -67,6 +67,14 @@ for p in $(jq -r '.enabledPlugins // {} | to_entries[] | select(.value==true) | 
   echo "FAIL $p:"; printf '%s\n' "$OUT" | tail -3; FAILS=$((FAILS+1))
 done
 
+# The claude CLI rewrites settings.json on plugin/marketplace commands and has
+# dropped sticky keys (effortLevel) four times (2026-08-16..17). Since this
+# script is the sanctioned wrapper for those commands, re-assert the sticky
+# keys afterwards via the heal script (silent; no-op when nothing drifted).
+HEAL="$(CDPATH= cd "$(dirname "$0")/.." && pwd)/hooks/sessionstart-heal-settings.sh"
+[ -f "$HEAL" ] && SETTINGS_HEAL_SILENT=1 sh "$HEAL" </dev/null >/dev/null 2>&1
+
+
 if [ "$FAILS" -eq 0 ]; then echo "sync complete — 0 failures"
 else echo "sync complete — $FAILS FAILURE(S)"; fi
 exit "$FAILS"
