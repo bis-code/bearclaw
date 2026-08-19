@@ -204,6 +204,6 @@ teardown() { rm -rf "$FIXTURE"; }
 
 @test "heal-settings resolves the repo from its own location, not a hardcoded path" {
   REPO="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
-  run grep -c 'som/personal-projects' "$REPO/hooks/sessionstart-heal-settings.sh"
+  run grep -cE '/Users/|/home/[a-z]|\$HOME/[a-z]+/[a-z]' "$REPO/hooks/sessionstart-heal-settings.sh"
   [ "$output" = "0" ]
 }

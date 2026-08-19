@@ -7,7 +7,8 @@ Identity section for your own accounts/paths. -->
 
 ## Identity & git
 
-- Personal projects live in `~/projects/` (your GitHub account)
+- Fill in your own accounts and repo locations here — nothing in this repo
+  reads this line, so it is documentation for the model, not configuration
 - Use conventional-commits (`feat(scope): ...`)
 
 ## Code Search
