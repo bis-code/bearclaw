@@ -18,9 +18,10 @@ search() { # <index>
   if [ -n "$MEMORY_SEARCH_CMD" ]; then eval "$MEMORY_SEARCH_CMD"; return; fi
   leann search "$1" "$PROMPT" --top-k 8 --json --non-interactive --show-metadata 2>/dev/null
 }
-# Per-root global tier: derive the index name from the active config root so
-# cl-p (~/.claude -> claude-memory-global) and cl-w (~/.claude-work ->
-# claude-work-memory-global) never share global memory. Overridable for tests.
+# Global tier: derive the index name from the active config root
+# (~/.claude -> claude-memory-global), so a session that runs against a
+# different CLAUDE_CONFIG_DIR gets its own index rather than silently sharing
+# one. Overridable for tests.
 GLOBAL_MEM_INDEX="${GLOBAL_MEM_INDEX:-$(basename "${CLAUDE_CONFIG_DIR:-$HOME/.claude}" | sed 's/^\.//')-memory-global}"
 GLOBAL_MEM_DIR="${GLOBAL_MEM_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/memory-global}"
 GLOBAL=$(search "$GLOBAL_MEM_INDEX")
