@@ -36,8 +36,8 @@ contract_base: /v1
 layers:
   - name: ios
     type: swift-client      # v1 types: swift-client | chi-routes | openapi-spec
-    path: TripIt/
-    notes: endpoints in TripIt/Networking/Endpoints.swift
+    path: MyApp/
+    notes: endpoints in MyApp/Networking/Endpoints.swift
   - name: backend
     type: chi-routes
     path: backend/
