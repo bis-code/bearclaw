@@ -191,7 +191,7 @@ teardown() { rm -rf "$FIXTURE"; }
 
 @test "audit-collect has no hardcoded user path" {
   REPO="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
-  run grep -c 'baicoianuionut' "$REPO/scripts/audit-collect.sh"
+  run grep -cE '/Users/|/home/[a-z]' "$REPO/scripts/audit-collect.sh"
   [ "$output" = "0" ]
 }
 
