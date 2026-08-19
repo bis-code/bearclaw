@@ -80,7 +80,7 @@ The axes are accuracy, completeness, clarity, actionability, and conciseness. A 
 
 **Produces:** a per-component token estimate plus prioritized savings recommendations. Read-only — it measures and recommends, never removes.
 
-It inventories agents, skills, rules, MCP servers, and the project + user `CLAUDE.md` chain in the active config root, flagging outliers (agent files over 200 lines, skills over 400, rules over 100, MCP servers with more than 20 tools or that merely wrap a CLI). Crucially it resolves symlinks and skips identical copies, so tooling shared across config roots is counted once. Its standing conclusion: agents and skills are on-demand and cost only their description while idle, so the always-loaded levers are `rules/`, `CLAUDE.md`, and MCP tool schemas.
+It inventories agents, skills, rules, MCP servers, and the project + user `CLAUDE.md` chain in the active config root, flagging outliers (agent files over 200 lines, skills over 400, rules over 100, MCP servers with more than 20 tools or that merely wrap a CLI). Crucially it resolves symlinks and skips identical copies, so tooling that is symlinked into place from this repo is counted once. Its standing conclusion: agents and skills are on-demand and cost only their description while idle, so the always-loaded levers are `rules/`, `CLAUDE.md`, and MCP tool schemas.
 
 ### contract-audit
 
