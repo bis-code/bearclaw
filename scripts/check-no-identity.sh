@@ -43,9 +43,13 @@ report "absolute home paths — use \$HOME, ~, or a placeholder like /home/user:
 
 # 2. Contact details. The domain must end in a real-looking TLD that is not a
 #    file extension — "icon_512x512@2x.png" is a filename, not an address.
+#    "git@<forge>" is also not an address: it is the fixed SSH login every git
+#    host uses, so it identifies the protocol, not a person. Only the public
+#    forges are excluded — git@some-internal-host stays a finding, since that
+#    form does leak a private hostname.
 report "email addresses — no personal contact details in a shared config:" \
   "$(scan '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' \
-     | drop 'noreply@anthropic|users\.noreply\.github\.com|example\.(com|org)|user@host|@ns\.adobe|@[a-zA-Z0-9.-]*\.(png|jpg|jpeg|gif|svg|js|ts|sh|md|json|py|txt|html|css)\b')"
+     | drop 'noreply@anthropic|users\.noreply\.github\.com|example\.(com|org)|user@host|git@(github|gitlab|bitbucket)\.(com|org)\b|@ns\.adobe|@[a-zA-Z0-9.-]*\.(png|jpg|jpeg|gif|svg|js|ts|sh|md|json|py|txt|html|css)\b')"
 
 # 3. Network addresses. Loopback and unspecified are fine; anything else is
 #    somebody's host. Version-number-shaped strings are excluded by requiring
