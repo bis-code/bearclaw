@@ -8,7 +8,7 @@ DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
 
 # Resolve the repo from the live install (no hardcoded clone path — machines
-# differ: ~/som/... on macOS, ~/projects/... on WSL).
+# differ: ~/projects/... on macOS, ~/dev/... on WSL).
 CM="$(readlink -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" 2>/dev/null)"
 REPO="$(dirname "$CM")"
 [ -n "$REPO" ] && [ -d "$REPO/.git" ] || { echo "FAIL cannot resolve repo from ~/.claude/CLAUDE.md symlink — is claude-setup installed?"; exit 1; }

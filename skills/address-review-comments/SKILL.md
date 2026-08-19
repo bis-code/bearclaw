@@ -74,7 +74,7 @@ Verify after each edit where cheap (the file still parses / the relevant test pa
 ## Step 5: NEVER stage or commit
 
 Do not run `git add`, `git stage`, or `git commit`. Leave every change unstaged.
-The user reviews `git diff` and commits. (In `~/work`, staging is hard-blocked by a
+The user reviews `git diff` and commits. (Some repos hard-block staging with a
 hook anyway — never attempt it.)
 
 ## Step 6: Summary

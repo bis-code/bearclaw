@@ -3,15 +3,24 @@
 # a GitHub remote, inject the now/next issue roadmap once daily per repo — the
 # roadmap greets you instead of being fetched (docs-gate convertible,
 # 2026-08-17; mechanizes USAGE.md's session-start step).
-# Silent when: not a git repo, no GitHub remote, under ~/work (work tracker is
-# read-only there), gh missing, or no now/next issues.
+# Silent when: not a git repo, no GitHub remote, under an opted-out root,
+# gh missing, or no now/next issues.
+# ROADMAP_SKIP_ROOTS: colon-separated absolute path prefixes to stay silent
+# under — for repos tracked somewhere other than GitHub Issues, or that you
+# only ever read. Empty by default: this hook assumes nothing about your
+# directory layout.
 # Seams (tests): ROADMAP_FORCE=1 (skip throttle), XDG_STATE_HOME, GH_BIN.
 set +e
 
 INPUT=$(cat 2>/dev/null)
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 [ -n "$CWD" ] || CWD="$PWD"
-case "$CWD" in "$HOME/work"*) exit 0 ;; esac
+IFS=':'
+for _root in ${ROADMAP_SKIP_ROOTS:-}; do
+  [ -n "$_root" ] || continue
+  case "$CWD" in "$_root"*) exit 0 ;; esac
+done
+unset IFS _root
 
 git -C "$CWD" rev-parse --git-dir >/dev/null 2>&1 || exit 0
 URL=$(git -C "$CWD" remote get-url origin 2>/dev/null)

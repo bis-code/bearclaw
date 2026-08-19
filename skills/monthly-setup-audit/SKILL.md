@@ -49,7 +49,7 @@ A three-phase, READ-ONLY audit:
 
 4. **Gate — ask before changing anything.** Ask: "Apply the safe/reversible fixes now?"
    - On yes: apply ONLY the safe items, one at a time, showing each command before running it.
-   - **NEVER** touch anything under `~/work` (surface only).
+   - **NEVER** touch a repo the user does not own (surface only).
    - **NEVER** `git add -A`; stage specific files. **NEVER** auto-commit unless the user explicitly says to.
    - Destructive items: list them, do not execute — the user handles those manually.
 
