@@ -87,9 +87,12 @@ These sections were repeatedly stripped by users when added speculatively:
 
 ## Permissions consideration
 
-`gh pr edit` is a write operation. Some workspaces (CLAUDE.md `work-assistant-mode` patterns) block it by default. If blocked:
+`gh pr edit` is a write operation. Some workspaces block it by default. If blocked:
 
-1. Inform the user and write the proposed title + body to a suggestion file under `~/Documents/Obsidian/Projects/work/suggestions/`.
+1. Inform the user and write the proposed title + body to a file inside the
+   repo (e.g. a gitignored scratch path). Ask where it should go rather than
+   assuming a location outside the repo — this skill does not know your notes
+   setup and must not invent a path on your machine.
 2. Provide the exact `gh pr edit <NUM> --title "..." --body-file <path>` invocation.
 3. Apply only after explicit user authorization.
 

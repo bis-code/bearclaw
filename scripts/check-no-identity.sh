@@ -58,9 +58,20 @@ report "IP addresses — no host addresses in a shared config:" \
   "$(scan '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b' \
      | drop '127\.0\.0\.1|0\.0\.0\.0|255\.255\.255|localhost')"
 
+# 4. Home paths that are not dotfiles. Config belongs under a dotfile; any
+#    other `~/Something` names a directory from one person's machine, which a
+#    shared config must not assume anybody else has. This is a LAYOUT leak, not
+#    a name leak, which is why a denylist of private names cannot catch it —
+#    three reached this repo that way (a projects root, a second config root,
+#    and a notes vault path inside a skill). Obvious placeholders and this
+#    repo's own suggested clone path are allowed.
+report "personal home directories — use a dotfile, a placeholder, or ask; do not assume the reader's layout:" \
+  "$(scan '(~|\$HOME)/[A-Za-z][A-Za-z0-9._-]*' \
+     | drop '(~|\$HOME)/(foo|bar|baz|qux|targetdir|bearclaw)(/|$|[^A-Za-z0-9._-])')"
+
 [ "$fail" -eq 0 ] && echo "ok: no machine-specific or identifying strings"
 
-# 4. No work/personal config-root split. This repo is user-scope config for a
+# 5. No work/personal config-root split. This repo is user-scope config for a
 #    computer — it has no folder-scope concept and must not encode one (e.g. a
 #    second "work" config root distinct from the primary one). Matches the
 #    concept via the naming pattern the split actually used (CLAUDE_WORK_HOME,

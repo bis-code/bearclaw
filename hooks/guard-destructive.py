@@ -5,7 +5,7 @@ Root cause it addresses: 2026-06-08 bypassPermissions bg agent wiping a whole pr
 
 Parser-based: the command is split into segments on UNQUOTED separators, and a
 segment is only inspected when its real command word is destructive
-(rm / git clean / find / chmod / chown). So `echo "rm -rf ~/projects"`, comments, and
+(rm / git clean / find / chmod / chown). So `echo "rm -rf ~/foo"`, comments, and
 docs are NOT flagged — only an actual `rm` invocation is. Fails OPEN on its own
 errors (never blocks legit work due to a bug). Allows narrow project-local deletes."""
 import sys, json, re, os, shlex
@@ -129,7 +129,7 @@ for seg in segments(cmd):
                 deny(f"recursive force-delete of system path '{t}'")
             d = home_depth(t)
             if d is not None and d <= 2:
-                deny(f"recursive force-delete of shallow home path '{t}' (≤2 levels under ~, e.g. ~/projects). "
+                deny(f"recursive force-delete of shallow home path '{t}' (≤2 levels under ~, e.g. ~/foo or ~/foo/bar). "
                      f"Run it from inside the project with a relative path, or name a deeper subdir.")
             if re.match(r"^/[^/]*\*", t):
                 deny(f"recursive force-delete with a top-level glob '{t}'")

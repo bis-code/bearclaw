@@ -55,8 +55,8 @@ assert_allow() {
   assert_deny
 }
 
-@test "denies rm -rf of a shallow tilde path (~/projects)" {
-  run_guard 'rm -rf ~/projects'
+@test "denies rm -rf of a shallow tilde path (~/foo)" {
+  run_guard 'rm -rf ~/foo'
   assert_deny
 }
 
@@ -105,7 +105,7 @@ assert_allow() {
 }
 
 @test "allows echo of a destructive-looking string (parser distinguishes real invocations)" {
-  run_guard 'echo "rm -rf ~/projects"'
+  run_guard 'echo "rm -rf ~/foo"'
   assert_allow
 }
 
@@ -117,7 +117,7 @@ assert_allow() {
 @test "denies a shallow path even when HOME has a redundant double slash" {
   local doubled_home="${FAKE_HOME%/tester}//tester"
   local payload
-  payload="$(jq -n --arg c 'rm -rf ~/projects' '{tool_name: "Bash", tool_input: {command: $c}}')"
+  payload="$(jq -n --arg c 'rm -rf ~/foo' '{tool_name: "Bash", tool_input: {command: $c}}')"
   run env HOME="$doubled_home" python3 "$GUARD" <<<"$payload"
   assert_deny
 }

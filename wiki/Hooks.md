@@ -85,7 +85,7 @@ Every hook also takes environment seams (`*_DIR`, `*_BIN`, `*_CMD` overrides) so
 
 The one hook that is a wall, not a speed bump. It blocks broad destructive shell commands **even under `--dangerously-skip-permissions`**, because `PreToolUse` hooks run regardless of permission mode. Its header names the root cause it addresses: a background agent running with bypassed permissions wiped a projects root (the incident is described in [[Rules]]).
 
-**It is a parser, not a regex list.** The command is split into segments on *unquoted* separators (`;`, newline, `|`, `&`, with `&&`/`||` collapsed), and a segment is inspected only when its real command word is destructive — `rm`, `git`, `find`, `chmod`, `chown` — after skipping wrappers like `sudo`, `env`, `nohup`, `xargs` and leading `VAR=value` assignments. So `echo "rm -rf ~/projects"`, comments, and documentation are **not** flagged; only an actual invocation is.
+**It is a parser, not a regex list.** The command is split into segments on *unquoted* separators (`;`, newline, `|`, `&`, with `&&`/`||` collapsed), and a segment is inspected only when its real command word is destructive — `rm`, `git`, `find`, `chmod`, `chown` — after skipping wrappers like `sudo`, `env`, `nohup`, `xargs` and leading `VAR=value` assignments. So `echo "rm -rf ~/foo"`, comments, and documentation are **not** flagged; only an actual invocation is.
 
 What gets denied:
 
@@ -94,7 +94,7 @@ What gets denied:
 | `rm` (recursive **and** force) | Target is `/`, `/*`, `~`, `~/`, `$HOME`, `${HOME}`, `..`, `../*`, `*`, or `./*` |
 | | Target is a bare variable like `$FOO` or `${FOO}/*` — an empty expansion could hit `$HOME` or `/` |
 | | Target is a system path: `/etc`, `/var`, `/usr`, `/bin`, `/sbin`, `/System`, `/Library`, `/opt`, `/private` |
-| | Target is a **shallow home path** — 2 or fewer levels under `~`, e.g. `~/projects`. The denial message tells you the way through: run it from inside the project with a relative path, or name a deeper subdirectory. |
+| | Target is a **shallow home path** — 2 or fewer levels under `~`, e.g. `~/foo` or `~/foo/bar`. The denial message tells you the way through: run it from inside the project with a relative path, or name a deeper subdirectory. |
 | | Target begins with a top-level glob, e.g. `/var*` |
 | `git clean` | `-f`, `-d` and `-x` are all present — it removes all untracked *and* ignored files. Suggests verifying the repo root or using `git stash -u`. |
 | `find` | `-delete` or `-exec … rm` with the search root at `/` or under a home root. |
