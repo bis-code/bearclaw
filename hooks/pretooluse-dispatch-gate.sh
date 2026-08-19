@@ -32,7 +32,7 @@ if [ -z "$MODEL" ]; then
 fi
 
 # --- Safety gate: background/autonomous dispatch without worktree isolation.
-# Root cause of the 2026-06-08 ~/som wipe was a background agent running with
+# Root cause of the 2026-06-08 projects-tree wipe was a background agent running with
 # bgIsolation:none directly on the live tree. Make worktree isolation the default
 # EXPECTATION for background dispatches: deny once/session; re-issue to override
 # (read-only agents, or accepted risk). See rules/enforced-guards.md.
@@ -43,7 +43,7 @@ if [ "$BG" = "true" ] && [ "$ISO" != "worktree" ]; then
   if [ ! -f "$IMARK" ]; then
     : > "$IMARK" 2>/dev/null || true
     jq -n --arg extra "$MODEL_NOTE" \
-      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("Background dispatch without worktree isolation. Add isolation:\"worktree\" so a runaway agent works on a throwaway copy, never your live tree — bgIsolation:none on the live ~/som tree caused the 2026-06-08 wipe. If this agent is read-only or you accept the risk, re-issue the same call (denied once per session)." + (if $extra != "" then " " + $extra else "" end))}}'
+      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("Background dispatch without worktree isolation. Add isolation:\"worktree\" so a runaway agent works on a throwaway copy, never your live tree — bgIsolation:none on a live projects tree caused the 2026-06-08 wipe. If this agent is read-only or you accept the risk, re-issue the same call (denied once per session)." + (if $extra != "" then " " + $extra else "" end))}}'
     exit 0
   fi
 fi

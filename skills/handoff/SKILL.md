@@ -41,13 +41,13 @@ Skipping step 1 = writing fiction. The handoff must reflect the actual VCS state
 
 ## If the repo is a personal project with a GitHub-Issues roadmap
 
-When the repo is under `~/som` (bis-code, has a remote) and **not** under `~/work/`, its roadmap lives in **GitHub Issues** (see the `roadmap` skill) — don't duplicate it into the handoff:
+When the repo is one of your own projects (your GitHub account, has a remote) and is not one you merely read, its roadmap lives in **GitHub Issues** (see the `roadmap` skill) — don't duplicate it into the handoff:
 
 - **What's Next** → point at the issues (`gh issue list --label now` / `--label next`); do NOT restate the workstreams.
 - Capture only the **session delta** not yet recorded: uncommitted work, dead-ends tried, open questions, decisions not yet written to an issue.
 - Reconcile + update the issues (close done, promote next→now) as part of the handoff, then reference them from the Resume Command.
 
-**Under `~/work/`:** full self-contained capture per the template below — defer to the work project's own tracking (the work tracker, read-only). The GitHub-Issues roadmap convention is personal-projects-only.
+**In a repo you don't own:** full self-contained capture per the template below — defer to that project's own tracking, which is read-only to you. The GitHub-Issues roadmap convention is personal-projects-only.
 
 ## Output Location
 
@@ -155,7 +155,7 @@ If the project has a GitHub issue tied to this work (check for `issue/<number>-*
 gh issue comment <number> --body-file docs/superpowers/handoffs/<file>.md
 ```
 
-Ask the user before running this. Do not auto-comment on work repos (`~/work/*`).
+Ask the user before running this. Never auto-comment on a repo the user does not own.
 
 ## Optional: Capture memory
 

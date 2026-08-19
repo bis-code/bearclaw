@@ -55,13 +55,20 @@ printf '{"cwd":"%s"}' "$R" | GH_BIN="$TMP/gh" XDG_STATE_HOME="$TMP/state-t5" sh 
 out=$(printf '{"cwd":"%s"}' "$R" | GH_BIN="$TMP/gh" XDG_STATE_HOME="$TMP/state-t5" sh "$DIR/sessionstart-roadmap-nudge.sh")
 [ -z "$out" ] && ok "t5 once-daily throttle" || bad "t5" "$out"
 
-# t6: under ~/work -> silent (simulated via HOME override)
-FH="$TMP/home"; mkdir -p "$FH/work/proj"
-( cd "$FH/work/proj" && git init -q && git config user.email t@t && git config user.name t \
+# t6: under a ROADMAP_SKIP_ROOTS prefix -> silent
+FH="$TMP/home"; mkdir -p "$FH/readonly/proj"
+( cd "$FH/readonly/proj" && git init -q && git config user.email t@t && git config user.name t \
   && git commit -q --allow-empty -m x && git remote add origin https://github.com/w/w.git )
-out=$(printf '{"cwd":"%s"}' "$FH/work/proj" | HOME="$FH" ROADMAP_FORCE=1 GH_BIN="$TMP/gh" \
-  XDG_STATE_HOME="$TMP/state" sh "$DIR/sessionstart-roadmap-nudge.sh")
-[ -z "$out" ] && ok "t6 work dir silent" || bad "t6" "$out"
+out=$(printf '{"cwd":"%s"}' "$FH/readonly/proj" | ROADMAP_SKIP_ROOTS="$FH/readonly" \
+  ROADMAP_FORCE=1 GH_BIN="$TMP/gh" XDG_STATE_HOME="$TMP/state" \
+  sh "$DIR/sessionstart-roadmap-nudge.sh")
+[ -z "$out" ] && ok "t6 skip-root silent" || bad "t6" "$out"
+
+# t6b: same repo, no ROADMAP_SKIP_ROOTS -> NOT silent (proves t6 is the seam
+# doing the work, not an unrelated early exit)
+out=$(printf '{"cwd":"%s"}' "$FH/readonly/proj" | ROADMAP_FORCE=1 GH_BIN="$TMP/gh" \
+  XDG_STATE_HOME="$TMP/state-t6b" sh "$DIR/sessionstart-roadmap-nudge.sh")
+[ -n "$out" ] && ok "t6b no skip-root -> nudges" || bad "t6b" "(empty)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

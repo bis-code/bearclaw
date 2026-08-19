@@ -41,8 +41,8 @@ const RISK_RULES =
   'Classify each finding\'s risk: "safe" = reversible and low-blast-radius ' +
   '(prune a memory index line, archive ERRORS.md overflow, delete a known stale .bak). ' +
   '"destructive" = deletes/overwrites files, removes a repo config, or is otherwise ' +
-  'hard to reverse. ANYTHING whose scope is under ~/work MUST be risk "destructive" ' +
-  'and scope "work" — never "safe". fix_command must be an exact shell command or ' +
+  'hard to reverse. ANYTHING scoped to a repo the user does not own MUST be risk ' +
+  '"destructive" and scope "external" — never "safe". fix_command must be an exact shell command or ' +
   'file edit. If the evidence file is missing or empty, return zero findings.'
 
 const LANES = [
@@ -81,7 +81,7 @@ const summary = await agent(
   `1. Summary (3-5 bullets, the headline findings)\n` +
   `2. Findings by severity (high → low), each with evidence + scope\n` +
   `3. Fix-plan — three subsections: "Safe / reversible (apply on confirm)", ` +
-  `"Destructive / manual review", "Work-scope (manual only — never auto-applied)". ` +
+  `"Destructive / manual review", "External-scope (manual only — never auto-applied)". ` +
   `List the exact fix_command under each.\n` +
   `4. Delta vs last month (or "first run")\n` +
   `5. Coverage gaps (any missing lanes or evidence _gap: notes worth flagging)\n\n` +
