@@ -22,7 +22,10 @@ teardown() { rm -rf "$DEST"; }
 }
 
 @test "install.sh never writes to ~/.gitconfig-*" {
-  run grep -c 'gitconfig-work\|gitconfig-personal' "$REPO/install.sh"
+  # Matches the prefix, not two specific suffixes: any identity file the
+  # installer might reach for should fail this, not just the two that existed
+  # when it was written.
+  run grep -c 'gitconfig-' "$REPO/install.sh"
   [ "$output" = "0" ]
 }
 
