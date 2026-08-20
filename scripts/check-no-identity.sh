@@ -19,7 +19,12 @@ cd "$REPO"
 # -H forces the filename prefix even when xargs' final batch is a single file
 # (otherwise grep omits it, breaking both the file:line output and the
 # self-exclusion filter that depends on it).
-scan() { git ls-files -z | xargs -0 grep -nEIH "$1" 2>/dev/null | grep -v '^scripts/check-no-identity.sh:' || true; }
+# Exclude this file AND its test suite. Both necessarily contain the strings
+# being searched for — the tests plant a real-looking address, path and work
+# root precisely to prove each check still fires. Without this the gate fails
+# on its own fixtures. Anything else in the tree is fair game.
+SELF_RE='^scripts/(check-no-identity\.sh|tests/check-no-identity\.bats):'
+scan() { git ls-files -z | xargs -0 grep -nEIH "$1" 2>/dev/null | grep -vE "$SELF_RE" || true; }
 
 fail=0
 report() { # <label> <hits>
@@ -80,7 +85,7 @@ report "personal home directories — use a dotfile, a placeholder, or ask; do n
 #    uses: workflow, workspace, worktree, network, framework, workaround.
 concept_hits=$(git ls-files -z \
   | xargs -0 grep -nEIHi 'claude[_-]work|\bcl-w\b' 2>/dev/null \
-  | grep -v '^scripts/check-no-identity.sh:' || true)
+  | grep -vE "$SELF_RE" || true)
 
 if [ -n "$concept_hits" ]; then
   echo "work/personal split leak — these tracked files encode a second work config root:" >&2
