@@ -38,4 +38,22 @@ echo "$out" | grep -q BUILT || { echo "FAIL: post-lock run should build"; exit 1
 # lock is released after OUR build too (trap) -> immediate re-run possible
 [ -d "$TMP3/state/claude-memory/lockidx.lock" ] && { echo "FAIL: lock leaked after build"; exit 1; }
 
+# Case 6: SRC is a SYMLINK — the production shape. install.sh points the config
+# root's memory-global at this repo rather than copying it, but every case above
+# passes a REAL directory, so the suite went green while the staleness check was
+# a permanent no-op on every real machine. find does not follow a symlinked
+# starting point without -L, and `[ -d "$SRC" ]` does not catch it because -d
+# DOES follow. Regression guard.
+TMP4=$(mktemp -d); REAL4="$TMP4/real"; mkdir -p "$REAL4"; printf 'q' > "$REAL4/d.md"
+ln -s "$REAL4" "$TMP4/link"
+export XDG_STATE_HOME="$TMP4/state"
+export MEMORY_BUILD_CMD="echo BUILT"
+out=$(sh "$DIR/memory-index-freshness.sh" symidx "$TMP4/link")
+echo "$out" | grep -q BUILT || { echo "FAIL: first run through a symlink should build"; exit 1; }
+out=$(sh "$DIR/memory-index-freshness.sh" symidx "$TMP4/link")
+echo "$out" | grep -q BUILT && { echo "FAIL: unchanged symlinked src should skip"; exit 1; }
+sleep 1; printf 'r' >> "$REAL4/d.md"
+out=$(sh "$DIR/memory-index-freshness.sh" symidx "$TMP4/link")
+echo "$out" | grep -q BUILT || { echo "FAIL: edit behind a SYMLINK must rebuild (find needs -L)"; exit 1; }
+
 echo "PASS"
