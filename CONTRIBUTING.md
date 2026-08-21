@@ -14,8 +14,16 @@ Contributions welcome — especially new agents, skills, and hooks.
    ```
 
    It runs the JSON/shell lint and the full suite, and blocks the push on
-   failure. Note git ignores a hook symlink whose target is missing — silently,
-   with no output — so if the gate ever stops firing, check that link resolves.
+   failure.
+
+   Two ways this gate dies quietly. Git ignores a hook symlink whose target is
+   missing — silently, with no output. And if you keep a *private downstream* of
+   this repo with its own pre-publish checks, the line above **replaces** them:
+   link a wrapper of your own that runs `scripts/pre-push.sh` and those checks,
+   never this file directly. Both failures look identical from outside — the
+   push just succeeds — so when you audit the gate, check **what the link points
+   at**, not merely that it resolves. A gate that runs the wrong script reports
+   exactly as healthy as one that runs the right one.
 
 3. **Every hook ships a test.** A hook at `hooks/foo.sh` needs `hooks/foo.test.sh`
    that exercises it via env seams (see existing hooks — they all take
