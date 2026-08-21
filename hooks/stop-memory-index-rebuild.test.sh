@@ -43,9 +43,14 @@ marker_lines() {
 # The hook backgrounds its work (`sh memory-index-freshness.sh ... &`) and
 # exits 0 immediately, so a fired rebuild is asserted by polling briefly
 # rather than checking synchronously right after the hook returns.
+# Budget 10s, not 2s. The poll returns the instant the count is reached, so a
+# generous ceiling costs a passing run nothing — but what it waits on is a
+# BACKGROUNDED job competing with ~38 other suites and whatever else the machine
+# is doing, and a 2s ceiling turns ordinary load into a red suite. A gate that
+# goes red for reasons unrelated to the code is a gate people learn to bypass.
 wait_for_count() {
     want="$1"; n=0
-    while [ "$n" -lt 40 ]; do
+    while [ "$n" -lt 200 ]; do
         [ "$(marker_lines)" -ge "$want" ] && return 0
         n=$((n + 1)); sleep 0.05
     done
