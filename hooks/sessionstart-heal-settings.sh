@@ -26,6 +26,18 @@ LIVE="$ROOT/settings.json"
 # every repair runs without emitting anything.
 say() { [ -n "${SETTINGS_HEAL_SILENT:-}" ] && return 0; printf "$@"; }
 
+# Minimal audit trail. A clobber that recurs costs disproportionate forensics
+# because nothing records whether this guard ran or what it decided: transcripts
+# carry a stop-hook summary but no SessionStart record, and three of the paths
+# below return silently. One line per non-trivial outcome only — the quiet pass
+# stays silent, so this file grows slowly.
+heal_log() {
+  _d="${XDG_STATE_HOME:-$HOME/.local/state}/claude-memory"
+  mkdir -p "$_d" 2>/dev/null || return 0
+  printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$_d/settings-heal.log" 2>/dev/null
+  return 0
+}
+
 # Nothing to heal against if the canonical file is gone.
 [ -f "$CANON" ] || exit 0
 
@@ -52,10 +64,10 @@ sticky_check() {
   done
   [ -n "$missing" ] || return 0
 
-  command -v git >/dev/null 2>&1 || return 0
-  git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  command -v git >/dev/null 2>&1 || { heal_log "sticky-abort missing:$missing reason:no-git"; return 0; }
+  git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1 || { heal_log "sticky-abort missing:$missing reason:not-a-repo repo:$REPO"; return 0; }
   head_json=$(git -C "$REPO" show HEAD:settings.json 2>/dev/null)
-  [ -n "$head_json" ] || return 0
+  [ -n "$head_json" ] || { heal_log "sticky-abort missing:$missing reason:no-head-settings"; return 0; }
   restored=""
   for k in $missing; do
     [ "$(printf '%s' "$head_json" | jq -r --arg k "$k" 'has($k)' 2>/dev/null)" = "true" ] || continue
@@ -67,7 +79,12 @@ sticky_check() {
     fi
     rm -f "$t2"
   done
-  [ -n "$restored" ] && say '{"systemMessage":"settings.json self-heal: restored sticky key(s)%s (dropped by a stale write-through; values from git HEAD). Review/commit repo settings.json."}\n' "$restored"
+  if [ -n "$restored" ]; then
+    heal_log "sticky-restore$restored"
+    say '{"systemMessage":"settings.json self-heal: restored sticky key(s)%s (dropped by a stale write-through; values from git HEAD). Review/commit repo settings.json."}\n' "$restored"
+  else
+    heal_log "sticky-noop missing:$missing (present in canon? no; restorable from HEAD? no)"
+  fi
   return 0
 }
 

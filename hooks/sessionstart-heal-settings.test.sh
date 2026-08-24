@@ -4,6 +4,11 @@
 HOOK="$(dirname "$0")/sessionstart-heal-settings.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
+# Isolate the audit log too. The hook appends to
+# $XDG_STATE_HOME/claude-memory/settings-heal.log; without this the suite writes
+# into your REAL state dir on every run, and those entries are indistinguishable
+# from genuine heals. The seams below only redirect the repo and config root.
+XDG_STATE_HOME="$TMP/state"; export XDG_STATE_HOME
 CANON="$TMP/repo/settings.json"
 LIVE="$TMP/root/settings.json"
 fail=0
