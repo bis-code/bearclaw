@@ -132,9 +132,12 @@ For each accepted candidate:
 2. Append ONE index line to `$MEM_DIR/MEMORY.md` (create with an `# MEMORY` header
    if absent): `- [<Title>](<slug>.md) — <~150-char hook>`.
 
-**Do NOT commit.** Repo-local memory is gitignored and machine-local; the user
-manages persistence. Do NOT write to the global tier — global promotion is a
-separate explicit request.
+**Do NOT commit.** Repo-local memory *may* be gitignored and machine-local, but
+this varies per repo — check before assuming it will or won't reach another
+machine (`git check-ignore -v .claude/memory` or `git ls-files .claude/memory`;
+some personal repos track it deliberately). Either way the user manages
+persistence, so leave the files uncommitted and say which case applies. Do NOT
+write to the global tier — global promotion is a separate explicit request.
 
 ### 7. Close out the queue (deferred drain only)
 
@@ -150,7 +153,7 @@ memstore_mark_done "<raw-pointer-path>"
 
 - **No live write without accept.** AskUserQuestion is mandatory.
 - **No global writes by default.** Repo-local is the default tier.
-- **No commits.** Captured memory is machine-local.
+- **No commits.** The user decides persistence — and check whether the repo tracks `.claude/memory` before calling it machine-local.
 - **No shell-hook distillation.** Hooks stage raw; this skill (Claude) distills.
 - **No second entry for a near-dup.** SKIP → bump verified-date in place instead.
 
