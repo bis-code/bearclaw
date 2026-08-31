@@ -79,10 +79,28 @@ printf '## [2026-01-01] err one — fix one\n- **Trigger:** err-trigger-one\n- *
 
 # repo for slim tests (reuse MAIN which has repo-local memory)
 
-# run_slim: run hook with a configured (non-none) backend -> slim path
+# Stub backend lib: the slim gate is now HEALTH-gated, not just name-gated
+# (a named-but-dead backend must fall back to eager, not go silently slim —
+# see hooks/lib/memory-backend.sh membackend_health). T14-T17 test the slim
+# MECHANISM generically and want a backend that reports itself healthy on
+# demand, not the real membackend-local-embed.sh (whose health depends on
+# this machine's venv/index, which the isolated XDG_STATE_HOME above
+# deliberately breaks). STUB_HEALTH_RC controls the exit code `health`
+# reports; default 0 (healthy).
+STUB_LIB="$TMP/stub-membackend-lib"; mkdir -p "$STUB_LIB"
+cat > "$STUB_LIB/membackend-local-embed.sh" <<'STUBEOF'
+#!/bin/sh
+case "$1" in
+  health) exit "${STUB_HEALTH_RC:-0}" ;;
+  *) exit 3 ;;
+esac
+STUBEOF
+chmod +x "$STUB_LIB/membackend-local-embed.sh"
+
+# run_slim: run hook with a configured (non-none) backend, stubbed HEALTHY -> slim path
 run_slim(){ printf '{"cwd":"%s"}\n' "$MAIN" \
   | env MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX=test-memory-global XDG_STATE_HOME="$STATE_DIR" \
-    MEMORY_BACKEND=local-embed GLOBAL_MEM_DIR="$SLIM_GLOBAL" \
+    MEMORY_BACKEND=local-embed MEMBACKEND_LIB_DIR="$STUB_LIB" GLOBAL_MEM_DIR="$SLIM_GLOBAL" \
     sh "$HOOK" 2>/dev/null \
   | jq -r '.hookSpecificOutput.additionalContext // ""'; }
 
@@ -139,6 +157,43 @@ if grep -v '^[[:space:]]*#' "$HOOK" | grep -qi 'leann'; then
 else
   ok "t18 no leann invocation in sessionstart-load-memory.sh"
 fi
+
+# ---- health-gate: a NAMED but UNHEALTHY backend must fall back to eager,
+# not go silently slim. Reuses the stub above with STUB_HEALTH_RC=3 (unhealthy).
+run_unhealthy(){ printf '{"cwd":"%s"}\n' "$MAIN" \
+  | env MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX=test-memory-global XDG_STATE_HOME="$STATE_DIR" \
+    MEMORY_BACKEND=local-embed MEMBACKEND_LIB_DIR="$STUB_LIB" STUB_HEALTH_RC=3 \
+    GLOBAL_MEM_DIR="$SLIM_GLOBAL" \
+    sh "$HOOK" 2>/dev/null \
+  | jq -r '.hookSpecificOutput.additionalContext // ""'; }
+unhealthy_out=$(run_unhealthy)
+
+# T19: named+unhealthy -> eager load (global MEMORY.md content present)
+printf '%s' "$unhealthy_out" | grep -q "GLOBAL-MEM-CANARY" \
+  && ok "t19 backend=local-embed unhealthy: eager load (fallback)" \
+  || bad "t19" "eager load did not happen when backend unhealthy: $unhealthy_out"
+
+# T20: named+unhealthy -> recall-served slim banner is ABSENT
+printf '%s' "$unhealthy_out" | grep -q "recall-served" \
+  && bad "t20" "slim banner appeared despite unhealthy backend" \
+  || ok "t20 backend=local-embed unhealthy: slim banner absent"
+
+# T21: named+unhealthy -> the fallback note names the backend and says why
+printf '%s' "$unhealthy_out" | grep -q "note: memory backend 'local-embed' not ready" \
+  && ok "t21 backend=local-embed unhealthy: fallback note surfaced" \
+  || bad "t21" "fallback note missing: $unhealthy_out"
+
+# T22: named+HEALTHY (T14-T17's stub run) -> no fallback note (only the
+# unhealthy path warns)
+printf '%s' "$slim_out" | grep -q "^note: memory backend" \
+  && bad "t22" "fallback note appeared despite healthy backend" \
+  || ok "t22 backend=local-embed healthy: no fallback note"
+
+# T23: backend=none (T11-13's run_full) -> no fallback note either (there is
+# nothing to fall back FROM)
+printf '%s' "$full_out" | grep -q "^note: memory backend" \
+  && bad "t23" "fallback note appeared with backend=none" \
+  || ok "t23 backend=none: no fallback note"
 
 echo
 [ "$fail" -eq 0 ] && echo "ALL PASS" || echo "SOME FAILED"
