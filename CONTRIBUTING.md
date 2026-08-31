@@ -36,15 +36,21 @@ Contributions welcome — especially new agents, skills, and hooks.
    Explain in the PR why you need it, not why it might be nice.
 6. **Tests must never mutate real machine state.** This bit us: an early test
    that merely invoked `install.sh` silently rebuilt this maintainer's real
-   `leann` semantic-memory index and clobbered it. Any test that exercises the
+   semantic-memory index and clobbered it. Any test that exercises the
    memory system — directly, or *transitively* through `install.sh` — MUST set:
 
    ```bash
-   MEMORY_BUILD_CMD=true              # no-ops the leann index build
+   MEMORY_BUILD_CMD=true              # no-ops the index build
    GLOBAL_MEM_INDEX=<test-name>        # redirects away from the real index name
+   GLOBAL_MEM_DIR=<tmp>                # ...and away from the real corpus
    XDG_STATE_HOME=<tmp>                # keeps memstore_init out of your real
-                                        # ~/.local/state/claude-memory capture store
+                                        # ~/.local/state/claude-memory capture
+                                        # store, and out of the real index dir
    ```
+
+   `XDG_STATE_HOME` does double duty now that indexes live under
+   `${XDG_STATE_HOME:-~/.local/state}/claude-memory/`: unset, a test that
+   builds an index writes it next to the real ones.
 
    This is **enforced, not merely requested**: `scripts/tests/settings-invariants.bats`
    scans every test file (`hooks/*.test.sh`, `hooks/lib/*.test.sh`,
@@ -60,6 +66,18 @@ Contributions welcome — especially new agents, skills, and hooks.
 ```
 
 That runs every suite plus the identity gate. It must be green.
+
+**CI is the proof for anything platform-shaped.** The suite runs on Linux;
+most contributors don't. `date`, `stat`, `jq` and shell builtins differ enough
+between BSD and GNU that a green local run is evidence about your machine, not
+about the project — so let CI report before calling such a change done.
+
+The same holds for anything CI itself asserts. `.github/workflows/ci.yml`
+pins the installer's contract — that `install.sh` **copies** rather than
+symlinks, records provenance in `.installed-from`, and is idempotent on a
+second run — and that file is easy to leave behind when a change is scoped to
+`hooks/` or `install.sh`. If you change how installation works, open
+`ci.yml` and check the assertions still describe it.
 
 ## Wiki
 

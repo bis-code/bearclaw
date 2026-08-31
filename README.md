@@ -16,10 +16,11 @@ Deeper documentation lives in the [wiki](https://github.com/bis-code/bearclaw/wi
 — per-hook rationale, the full skill/agent catalogs, the memory loop, and the
 testing/identity-gate story.
 
-The repo *is* the config. `install.sh` symlinks it into `~/.claude/`, so
-editing the live config edits the repo and your changes stay version
-controlled. Commit drift yourself; `bin/claude-setup-doctor` warns when the
-tree is dirty.
+The repo is the source of the config. `install.sh` **copies** it into
+`~/.claude/` and records the source commit in `~/.claude/.installed-from`, so
+you can always tell which version is live. Re-run it after pulling — nothing
+propagates on its own. `bin/claude-setup-doctor` warns when the installed sha
+has drifted from the repo.
 
 ## Install
 
@@ -27,13 +28,12 @@ tree is dirty.
 git clone https://github.com/bis-code/bearclaw.git ~/bearclaw
 cd ~/bearclaw
 ./install.sh --dry-run     # see exactly what it will do
-./install.sh               # symlink it into ~/.claude
+./install.sh               # copy it into ~/.claude
 ./bin/claude-setup-doctor  # verify
 ```
 
 Existing files in `~/.claude/` are backed up to `~/.claude/backups/pre-install-*`.
-Re-running is idempotent. `./install.sh --uninstall` removes only the symlinks
-it created and never touches your memory. **`install.sh` touches only its
+Re-running is idempotent. **`install.sh` touches only its
 `DEST` (default `~/.claude`) and your memory-index state dir — it never runs
 `git config --global`, never writes `~/.gitconfig`, and never appends to your
 shell rc files.** That's mechanically enforced by
@@ -64,7 +64,7 @@ bin/                # operational scripts (claude-setup-doctor, cost report, rev
 commands/           # slash commands (/cost-report)
 scripts/            # pre-push lint, test-all.sh, check-no-identity.sh, and scripts/tests/
 templates/          # seed files (ERRORS.md.seed)
-install.sh          # symlinks repo → ~/.claude/, idempotent
+install.sh          # copies repo → ~/.claude/, idempotent
 ```
 
 ## What you get
@@ -114,7 +114,7 @@ rather than registered directly.
 | Event | Script | What it does |
 |---|---|---|
 | `SessionStart` | `sessionstart-load-memory.sh` | Surfaces memory regardless of cwd — loads the global index plus any repo-local memory for the current project. |
-| `SessionStart` | `sessionstart-heal-settings.sh` | Repairs `settings.json` when a Claude Code atomic-write (on `/config`, `/effort`, plugin changes) replaces the repo symlink with a real file and drops repo-only keys. |
+| `SessionStart` | `sessionstart-heal-settings.sh` | Merges repo-only keys back into `settings.json` after a Claude Code atomic-write (on `/config`, `/effort`, plugin changes) drops them. Under copy-on-install the live file and the repo's canonical one are two independent real files, so this is a key-level merge, not a link repair. |
 | `PreToolUse` (`Bash`) | `pretooluse-confirm-gate.sh` | Denies outward-facing / hard-to-reverse Bash commands unless prefixed `CLAUDE_CONFIRMED=1`. Holds even under permission-bypass modes. |
 | `PreToolUse` (`Bash`) | `pretooluse-secret-guard.sh` | Advisory only (never blocks) — warns when a command would dump secret-bearing file contents into the transcript. |
 | `PreToolUse` (`Bash`) | `guard-destructive.py` | Blocks catastrophic destructive shell commands (`rm -rf ~`, `git clean -fdx`, recursive `chmod`/`chown` over home, …) regardless of permission mode. See `scripts/tests/guard-destructive.bats`. |
@@ -184,9 +184,12 @@ to version it in your own fork (see the comment in `.gitignore`).
 ~/bearclaw/bin/claude-setup-doctor
 ```
 
-Seven checks: symlink integrity, hook script executable bits, JSON validity,
-settings cascade, MCP commands resolvable, repo git state, marketplace
-reachability. Exits non-zero only on FAIL.
+Thirteen check groups: required tools, **install-copy integrity** (is
+`.installed-from`'s sha still the repo's?), hook executable bits, JSON
+validity, settings cascade, MCP commands resolvable, repo git state,
+marketplace reachability, Claude CLI version and hook-key compatibility,
+enabled-vs-installed plugins, memory index, CRLF poisoning, and public-twin
+drift. Exits non-zero only on FAIL.
 
 ## Mirroring to a second config root
 
@@ -202,8 +205,14 @@ adding skills/agents to propagate; see `bin/claude-mirror-tooling.test.sh`.
 
 ## Pre-push lint
 
-`install.sh` symlinks `scripts/pre-push.sh` into `.git/hooks/pre-push` (won't
-clobber an existing hook). On push, it:
+`install.sh` deliberately never touches your git hooks, so wire this one
+yourself, once, after cloning:
+
+```sh
+ln -s ../../scripts/pre-push.sh .git/hooks/pre-push
+```
+
+On push, it:
 
 - runs `jq empty` over every tracked `*.json` (except `plugins/`)
 - runs `bash -n` over every tracked `*.sh`
@@ -225,14 +234,17 @@ Bypass with `git push --no-verify` if you've made a deliberate choice.
 
 ## Uninstall
 
-```bash
-~/bearclaw/install.sh --uninstall
-```
+There is no `--uninstall`. It existed to unlink what the installer had linked;
+once the installer started copying, "remove only what we created" stopped being
+answerable — a copied file is indistinguishable from one you wrote, and a flag
+that guesses would eventually delete something of yours.
 
-Removes only the symlinks this script created (verified by checking each one
-actually points back into the repo before unlinking it — a real file or a
-foreign symlink is left alone). Your memory under `~/.claude` and
-`~/.local/state/claude-memory` is not touched.
+To remove bearclaw, delete the entries it installed from `~/.claude/`
+(`CLAUDE.md`, `.mcp.json`, `settings.json`, `statusline.sh`, and the `rules`,
+`skills`, `hooks`, `agents`, `bin`, `commands`, `memory-global` directories),
+or restore from the `~/.claude/backups/pre-install-*` snapshot taken on your
+first install. Your memory under `~/.claude/memory-global/` and
+`~/.local/state/claude-memory` is yours — check it before deleting anything.
 
 ## Contributing
 

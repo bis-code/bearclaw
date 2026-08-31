@@ -6,7 +6,7 @@ How to install bearclaw, what the installer is mechanically prevented from touch
 git clone https://github.com/bis-code/bearclaw.git ~/bearclaw
 cd ~/bearclaw
 ./install.sh --dry-run     # see exactly what it will do
-./install.sh               # symlink it into ~/.claude
+./install.sh               # copy it into ~/.claude
 ./bin/claude-setup-doctor  # verify
 ```
 
@@ -16,7 +16,7 @@ Then start a new Claude Code session — hooks and rules are read at session sta
 
 ## What install.sh actually does
 
-The installer is short and deliberately boring. It symlinks four files and seven directories from the repo into `DEST` (default `~/.claude`):
+The installer is short and deliberately boring. It **copies** four files and seven directories from the repo into `DEST` (default `~/.claude`):
 
 | Kind | Entries |
 |---|---|
@@ -26,21 +26,43 @@ The installer is short and deliberately boring. It symlinks four files and seven
 Before touching anything it runs a **preflight**: `jq`, `git`, and `python3`
 are hard requirements (the catastrophic-delete guard, `hooks/guard-destructive.py`,
 is a python3 hook — without python3 it cannot protect you), and the install
-aborts with per-tool install hints if one is missing. `claude`, `leann`, `gh`,
+aborts with per-tool install hints if one is missing. `claude`, `gh`, `leann`,
 `bats`, and `terminal-notifier` are reported found/missing with hints so a
 skipped feature is a visible choice, then the install proceeds. The preflight
 only checks — it never installs software, preserving the touches-only-`DEST`
 guarantee below.
 
-Beyond the symlinks it does five things:
+### Copies, not symlinks
 
-1. **Sets executable bits** on `statusline.sh`, `hooks/*.sh`, `hooks/lib/*.sh`, `scripts/*.sh`, and `bin/*` — targeting the repo directly, since `chmod` follows symlinks. `*.test.sh` files are skipped on purpose: they are invoked as `sh <file>`, never executed directly, so chmod-ing them would dirty the tree against their tracked mode on every install.
+This changed, and it changes what you should expect. `DEST` now holds real
+files: editing `~/.claude/settings.json` no longer edits the repo, and pulling
+the repo no longer changes your live config until you re-run `install.sh`. The
+trade is deliberate — a symlinked config meant every `git pull` silently
+retargeted a running setup, and a local experiment dirtied the repo.
+
+Because a copy has no back-reference, the installer records where it came
+from: `DEST/.installed-from` holds `repo=<path>` and `sha=<commit>`. That is
+how you answer "which version is actually installed", which under symlinks was
+whatever the repo happened to be at that moment.
+
+Two consequences worth internalising:
+
+- **Re-run after pulling.** Nothing propagates on its own any more.
+- **The repo is not modified by installing.** `git status` in your checkout is
+  clean after an install; `scripts/tests/install.bats` asserts it, because an
+  earlier version chmod-ed the repo (correct when it symlinked, pure damage
+  once it copied).
+
+Beyond the copy it does six things:
+
+1. **Sets executable bits** on `statusline.sh`, `hooks/*.sh`, `hooks/lib/*.sh`, `scripts/*.sh`, and `bin/*` — on the **installed** tree only. `rsync`/`cp` already preserve the repo's tracked modes; this makes it deterministic whichever copy path ran. `*.test.sh` files are skipped on purpose: they are invoked as `sh <file>`, never executed directly.
 2. **Installs the `deep-think` plugin** if the `claude` CLI is on PATH (`claude plugin marketplace add` + `claude plugin install`, both idempotent). Skipped with a printed note when the CLI isn't found.
 3. **Seeds `rules/about-me.local.md`** from `rules/about-me.example.md` — only if absent, never overwritten. That file is gitignored; it is where your persona lives.
 4. **Initializes the capture store** layout under `$XDG_STATE_HOME/claude-memory` (see [[Memory-System]]).
-5. **Builds the semantic memory index** if `leann` is installed; otherwise prints `note: leann not found — semantic memory recall is disabled (everything else works)` and moves on.
+5. **Sets up the memory venv** (`DEST/memory-venv`) and installs `fastembed` into it, then builds the `local-embed` index for `memory-global` under the corpus name the recall hooks actually search. Guarded on `python3`; a failure prints `WARN` and leaves `memoryBackend` degrading to `none`. Semantic recall stays **opt-in** — set `"memoryBackend": "local-embed"` in `settings.json` to turn it on.
+6. **Builds the legacy `leann` index** if `leann` happens to be installed; otherwise prints `note: leann not found — semantic memory recall is disabled (everything else works)` and moves on. `leann` is no longer the engine a fresh install sets up — see [[Memory-System]].
 
-Re-running is idempotent: an entry that is already the correct symlink prints `ok <name>` and is left alone. Safe to re-run after `git pull`.
+Re-running is idempotent: the copy is `rsync -a --delete` (or `cp -R` without rsync), the plugin subcommands are idempotent, and the seeds are created only if absent. Safe to re-run after `git pull` — and after a pull, necessary.
 
 ### Installing to a non-default root
 
@@ -50,23 +72,21 @@ Re-running is idempotent: an entry that is already the correct symlink prints `o
 
 From the script's own header: **it touches only `$DEST` and `$XDG_STATE_HOME/claude-memory`.** Specifically it never runs `git config --global`, never writes `~/.gitconfig`, and never appends to your shell rc files.
 
-That is not a promise in prose only — `scripts/tests/install.bats` asserts it, and CI runs an install/uninstall round-trip on every push and pull request (see [[Testing-and-CI]]). If a future change started editing your shell config, the suite would fail.
+That is not a promise in prose only — `scripts/tests/install.bats` asserts it, and CI runs a real install into a throwaway root, twice, on every push and pull request (see [[Testing-and-CI]]). If a future change started editing your shell config, the suite would fail.
 
 ## Backups of pre-existing files
 
-Anything already at a target path — real file, real directory, or a foreign symlink — is **moved**, not deleted, into `$DEST/backups/pre-install-<YYYYmmdd-HHMMSS>/` before the symlink is created. The installer prints `backups saved to: <path>` at the end when it created one. Each run gets its own timestamped directory, so a second install never overwrites the first backup.
+Anything already at a target path — real file, real directory, or a symlink from an older install — is **moved**, not deleted, into `$DEST/backups/pre-install-<YYYYmmdd-HHMMSS>/` before the copy is written. The installer prints `backups saved to: <path>` at the end when it created one. Each run gets its own timestamped directory, so a second install never overwrites the first backup.
 
 `backups/` is gitignored, so restoring is a plain `mv` back.
 
 ## Uninstall
 
-```bash
-~/bearclaw/install.sh --uninstall
-```
+**There is no `--uninstall` flag.** It was removed with the move to copies, and the reason is worth stating rather than hiding: the old flag removed only symlinks whose `readlink` target pointed back into this repo, which made "did we create this?" a question with a definite answer. A copied file carries no such provenance — it is byte-identical to one you wrote yourself — so the same flag would have had to guess, and a wrong guess deletes your work. A missing flag is better than a destructive one that is right most of the time.
 
-It removes **only symlinks it created**, verified per entry: the path must be a symlink *and* its `readlink` target must point back into this repo. A real file or a foreign symlink prints `skip <name> (not our symlink)` and is left in place. Your memory under `~/.claude` and `~/.local/state/claude-memory` is not touched — the script says so on exit.
+To revert, restore from the newest `backups/pre-install-*` directory — that snapshot is exactly what was at those paths before the first install. Failing that, remove the entries listed in the table above from `DEST` by hand.
 
-To fully revert, uninstall and then restore whatever you want from the newest `backups/pre-install-*` directory.
+Your memory is not in the blast radius either way: `memory-global/` entries and `~/.local/state/claude-memory` are yours, and nothing above removes them. Check them before deleting anything under `~/.claude`.
 
 ## Doctor
 
@@ -76,7 +96,7 @@ To fully revert, uninstall and then restore whatever you want from the newest `b
 ~/bearclaw/bin/claude-setup-doctor
 ```
 
-Seven check groups: symlink integrity, hook script executable bits, JSON validity, settings cascade, MCP commands resolvable, repo git state, marketplace reachability. Each check reports `PASS` / `WARN` / `FAIL`; the exit code is non-zero only on `FAIL`, so it is safe to run in a loop or a login script. It resolves its own physical location with `cd -P`, so invoking it through the `~/.claude/bin` symlink still finds the real repo root.
+Thirteen check groups: required tools, **install-copy integrity** (does `.installed-from`'s recorded sha still match the repo?), hook executable bits, JSON validity, settings cascade, MCP commands resolvable, repo git state, marketplace reachability, Claude CLI version and hook-key compatibility, enabled-vs-installed plugins, memory index, CRLF poisoning, and public-twin drift. Each reports `PASS` / `WARN` / `FAIL`; the exit code is non-zero only on `FAIL`, so it is safe to run in a loop or a login script. It finds the repo from `$DEST/.installed-from` rather than by following symlinks out of its own path — under copy-on-install there is no link back to follow.
 
 Run it after every `git pull` and any time a session behaves as though a hook vanished.
 
@@ -89,7 +109,7 @@ Run it after every `git pull` and any time a session behaves as though a hook va
 | Tool | Enables | If absent |
 |---|---|---|
 | `gh` | the `roadmap` skill, PR/issue-aware workflows | Those skills degrade to asking you to run `gh` manually. |
-| `leann` | semantic memory recall (`userpromptsubmit-memory-recall.sh`, `stop-memory-index-rebuild.sh`) | Memory still works as plain file reads — no similarity search. `install.sh` prints a note and skips index building. |
+| `leann` | the *legacy* semantic-recall engine, still tried as a fallback by `userpromptsubmit-memory-recall.sh` | Nothing — the wired backend is `local-embed` (fastembed, set up by `install.sh`). With neither, memory works as plain file reads and you lose similarity search. |
 | `deep-think@bis-code` (Claude Code plugin) | architecture/design nudges (`userpromptsubmit-deepthink-nudge.sh`) | The hook degrades silently — it checks the installed-plugins file first and stays quiet rather than nudging toward a tool that cannot start. `install.sh` installs the plugin automatically when the `claude` CLI is on PATH. |
 | `bats`, `shellcheck` | running the test suite and pre-push lint locally | CI still runs them; `scripts/test-all.sh` prints `skip (bats not installed)` for the bats lane. |
 | `terminal-notifier` (macOS) | branded desktop attention notifications | `notify-attention.sh` falls back to plain `osascript`, then to a silent no-op on non-macOS. |

@@ -29,6 +29,17 @@ teardown() { rm -rf "$DEST"; }
   [ "$output" = "0" ]
 }
 
+@test "install.sh never chmods the source checkout" {
+  # It used to, and it had to: when install.sh symlinked, DEST and REPO were
+  # the same inodes. A copy severs that, so a repo-side chmod now only rewrites
+  # tracked modes in the user's checkout — `git status` dirty after an install
+  # that changed nothing they wrote, including 644 sourced libraries flipped to
+  # 755 against their own headers. The installed tree is the only tree whose
+  # modes are ours to assert.
+  run grep -c 'chmod +x "\$REPO' "$REPO/install.sh"
+  [ "$output" = "0" ]
+}
+
 @test "install.sh never appends to .zshrc unconditionally" {
   run grep -c 'ZSHRC' "$REPO/install.sh"
   [ "$output" = "0" ]
