@@ -33,9 +33,20 @@ jobs:
       - name: Install dry-run
         run: ./install.sh --dry-run "$RUNNER_TEMP/claude"
 
-      - name: Install and uninstall round-trip
+      - name: Install into a real destination, twice
         run: |
+          # This step exists to prove a REAL install works on a real Linux
+          # filesystem; scripts/tests/install.bats covers the same contract in
+          # more detail against fixtures. It asserted the SYMLINK contract and
+          # called --uninstall until 2026-08-31 — both retired with
+          # copy-on-install, so it failed the moment the installer was ported
+          # while every unit test stayed green. CI config encodes contracts too.
           ./install.sh "$RUNNER_TEMP/claude-real"
-          test -L "$RUNNER_TEMP/claude-real/settings.json"
-          ./install.sh --uninstall "$RUNNER_TEMP/claude-real"
+          # install COPIES, it does not symlink: Claude Code atomic-writes
+          # settings.json, which replaced a symlinked file with a real one and
+          # silently dropped every repo-only key. A symlink here is the bug.
+          test -f "$RUNNER_TEMP/claude-real/settings.json"
           test ! -L "$RUNNER_TEMP/claude-real/settings.json"
+          grep -q '^sha=' "$RUNNER_TEMP/claude-real/.installed-from"
+          # Idempotent: re-running over a populated DEST must succeed.
+          ./install.sh "$RUNNER_TEMP/claude-real"
