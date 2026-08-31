@@ -18,6 +18,7 @@
 #
 #   membackend_search <corpus-name> <query> <top-k>
 #   membackend_dedup  <corpus-name> <candidate-file>
+#   membackend_health
 #     Dispatch to the resolved backend. Exit-code contract (checked via $?
 #     after calling — these are shell functions, not subprocesses, so they
 #     `return`, never `exit`, and must not kill the sourcing script):
@@ -89,4 +90,12 @@ membackend_search() {
 
 membackend_dedup() {
   _membackend_dispatch dedup "$@"
+}
+
+# 0 = backend is actually serving (venv/deps/index present); 3 = not serving
+# (including "none"). Callers use this to gate slim mode on HEALTH, not just
+# on a configured NAME — a named-but-dead backend must fall back to eager
+# load, not silently serve nothing.
+membackend_health() {
+  _membackend_dispatch health "$@"
 }

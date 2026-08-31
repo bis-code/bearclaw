@@ -15,13 +15,15 @@
 #                        with a trailing notice.
 #
 # Phase 1.5 — slim mode: skip eager memory dumps when a real memory backend
-# serves recall on demand. Toggle (T9 — backend-aware, replaces the old
-# leann-index-existence check):
-#   membackend_name (hooks/lib/memory-backend.sh) != "none" -> slim load
-#     (a configured backend serves bodies on demand; env MEMORY_BACKEND is
-#     the test seam, same as every other adapter caller)
-#   membackend_name == "none" -> eager/full load (today's behavior — this is
-#     how bearclaw and any unconfigured machine degrade)
+# serves recall on demand. Toggle (backend-aware AND health-aware — a named
+# backend that isn't actually serving must not go slim, or memory silently
+# vanishes: no eager dump AND no recall):
+#   membackend_name != "none" AND membackend_health == 0 -> slim load
+#     (a configured, HEALTHY backend serves bodies on demand; env
+#     MEMORY_BACKEND is the test seam, same as every other adapter caller)
+#   membackend_name == "none" OR membackend_health != 0 -> eager/full load
+#     (this is how bearclaw and any unconfigured machine degrade, and how a
+#     configured-but-dead backend degrades — safe fallback, not silence)
 # No leann calls in this file.
 
 set +e
@@ -39,9 +41,17 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 DIR_MB=$(CDPATH= cd "$(dirname "$0")" && pwd)
 . "$DIR_MB/lib/memory-backend.sh"
 _slim=0
-[ "$(membackend_name)" != "none" ] && _slim=1
+_mb_name=$(membackend_name)
+if [ "$_mb_name" != "none" ] && membackend_health >/dev/null 2>&1; then
+  _slim=1
+fi
 
 OUT=""
+
+if [ "$_mb_name" != "none" ] && [ "$_slim" -eq 0 ]; then
+  OUT="${OUT}note: memory backend '${_mb_name}' not ready — loaded full memory as fallback.
+"
+fi
 
 # Surface a broken index build (marker written by lib/memory-index-build.sh).
 # Without this, a dead index means recall silently returns nothing all session.
