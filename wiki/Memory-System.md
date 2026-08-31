@@ -12,7 +12,9 @@ A three-tier memory system that fills up as you work, behind a review gate you c
 
 `memory-global/` ships **empty** apart from three scaffolding files (`README.md`, `MEMORY.md`, `ERRORS.md`). It fills as you work.
 
-An older location, `~/.claude/projects/<cwd>/memory/`, is deprecated. Entries there still load natively and migrate lazily when next touched; `hooks/lib/memory-migrate.sh` (exposed as `claude-memory-migrate`) onboards the current project explicitly — it resolves the main worktree so a linked worktree onboards its parent repo rather than itself, copies any legacy entries not already present (purely additive, existing entries are never overwritten, legacy is never deleted), and rebuilds the project's index.
+Claude Code 2.x writes typed notes of its own under `~/.claude/projects/<encoded-cwd>/memory/`. That directory is **not** one of the roots below, and the omission is deliberate rather than an oversight: it is the harness's own machine-local store, so a lesson that lands there never reaches your other machine, and whether to treat it as a retrieval tier is a workflow decision for whoever installs this — not one to make on their behalf. `hooks/lib/memory-roots.sh` is the single place that would change; `memroots_emit` is the function to add a root to.
+
+`hooks/lib/memory-migrate.sh` (exposed as `claude-memory-migrate`) onboards the current project explicitly — it resolves the main worktree so a linked worktree onboards its parent repo rather than itself, copies any legacy entries not already present (purely additive, existing entries are never overwritten, legacy is never deleted), and rebuilds the project's index.
 
 ## The loop
 
@@ -44,11 +46,41 @@ Both run **distill → dedup → ask → write**:
 
 ### 3. Recall (hook + optional semantic index)
 
-`userpromptsubmit-memory-recall.sh` injects relevant entries into context per prompt, rather than dumping everything at session start. It skips trivial prompts — fewer than four words, `y`/`yes`/`no`/`ok`/`continue`, anything starting with `/` — then searches two indexes: the global one, named after the active config root, and the current repo's, resolved from the **main** worktree so all linked worktrees share one index. Results merge and pass through `hooks/lib/memory-recall.py` with a relevance floor, a top-k of 3, and a 400-token budget, and the block comes back as `additionalContext`.
+`userpromptsubmit-memory-recall.sh` injects relevant entries into context per prompt, rather than dumping everything at session start. It skips trivial prompts — fewer than four words, `y`/`yes`/`no`/`ok`/`continue`, anything starting with `/` — then searches **two roots**:
+
+| Root | Corpus | Index name |
+|---|---|---|
+| Global | `~/.claude/memory-global/` | derived from the active config root, so two configs on one machine don't silently share one index |
+| Repo | `<main-worktree>/.claude/memory/` | resolved from the **main** worktree, so all linked worktrees share one index |
+
+A root that doesn't exist yields nothing rather than an error, so a repo with no `.claude/memory/` simply contributes no results. The arithmetic lives in one place — `hooks/lib/memory-roots.sh` — because four callers must agree on it exactly (this hook, SessionStart, Stop, and `bin/claude-memory-recall`), and a tier indexed under one name and searched under another is a silent miss, not a failure you'd notice.
+
+Results merge and pass through `hooks/lib/memory-recall.py`: a relevance floor of `0.5`, top-k `4`, and a `225`-token budget, returned as `additionalContext`. Each is overridable per-session via `MEMORY_FLOOR`, `MEMORY_TOP_K`, and `MEMORY_BUDGET_TOKENS`.
+
+One caveat worth stating plainly, because it bounds what tuning can buy you: on a measured eval set, raising the floor does **not** buy precision. The highest-scoring off-domain query and the lowest-scoring genuine in-corpus one overlap, so any floor that rejects an unrelated question also rejects real memories. Recall is the healthy half; refusing to answer is the hard one.
 
 Which entries were surfaced is appended to `_usage/recall-log.jsonl`, and that log feeds frequency and recency scoring on later turns — memory that keeps proving useful surfaces more readily. The same log powers `hooks/lib/memory-prune.sh`, which flags entries not recalled within a window (90 days by default) as a **review list and never deletes anything**; pruning stays a deliberate manual step.
 
-The semantic index itself is optional. With `leann` installed, `hooks/lib/memory-index-build.sh` stages a recall corpus (curated per-file entries, plus `ERRORS.md` split into one file per entry so a single error is retrievable on its own) and builds the index. `stop-memory-index-rebuild.sh` rebuilds it when a memory file changed, gated on mtime so it's nearly free when nothing did, and running in the background so it never delays a turn. Without `leann`, memory still works as plain file reads — you just lose similarity search.
+#### Backends
+
+Semantic search is **optional and off by default**. `settings.json` ships `"memoryBackend": "none"`, which means plain file reads: memory works, you just don't get similarity search. Nothing to install, nothing to build.
+
+`hooks/lib/memory-backend.sh` is the seam. Callers source it and call `membackend_search` / `membackend_dedup` / `membackend_build` / `membackend_health` instead of naming a backend, and read the answer from the exit code: **0** results on stdout (one `{"score","path","snippet"}` JSON object per line), **3** no backend or backend unavailable — fall back to grep or an eager load, **1** the backend errored, treated the same as 3 but a caller may surface a notice. The functions are sourced, so they `return` and never `exit`: a backend failure must not kill the hook that asked.
+
+One backend is wired. Set `"memoryBackend": "local-embed"` to enable it:
+
+| | |
+|---|---|
+| Engine | [`fastembed`](https://github.com/qdrant/fastembed) with `BAAI/bge-small-en-v1.5` — local, no network at query time |
+| Index | `${XDG_STATE_HOME:-~/.local/state}/claude-memory/local-embed-<key>.json`, one file per corpus, **never inside a repo** |
+| Scores | cosine in `[0,1]`, so the floor above is threshold-stable across entry lengths |
+| Query side | bge models are trained asymmetrically — passages embed bare, queries get an instruction prefix. `local-embed.py` applies it on the query side only, so enabling it needs no rebuild |
+
+Indexes are **keyed per corpus**, and a search asserts the index it opened was built from the corpus it was asked about — mismatched, it returns 3 and the caller falls back rather than answering from the wrong tier.
+
+`stop-memory-index-rebuild.sh` rebuilds when a memory file changed, gated on mtime so it's nearly free when nothing did, and backgrounded so it never delays a turn. `hooks/lib/memory-index-build.sh` stages the corpus first (curated per-file entries, plus `ERRORS.md` split into one file per entry so a single error is retrievable on its own — split in the staged copy, never on disk, because four consumers read that file whole).
+
+`leann`, the previous engine, is still tried as a fallback by the recall hook when the dispatcher returns no results, so an existing leann index keeps working. It is no longer what a fresh install builds.
 
 `scripts/memory-doctor.sh` validates one tier's index and `ERRORS.md` cap. Report mode is read-only; `--apply` makes only safe fixes (removing dangling index lines, appending review-marked stubs for orphan entry files) and never deletes an entry file, rotates `ERRORS.md`, or prunes notes.
 

@@ -209,24 +209,21 @@ say "ok   .installed-from (sha=$INSTALL_SHA)"
 # exercised, not a reimplementation of it.
 [ "${INSTALL_TEST_STOP_AFTER_COPY:-0}" = "1" ] && exit 0
 
-# Executable bits (chmod follows symlinks, so target the repo directly).
-# *.test.sh files are invoked via `sh <file>` (scripts/test-all.sh), never
-# executed directly, so skip them — chmod'ing them here just dirties the
-# tree against their tracked mode on every install.
+# Executable bits — on the INSTALLED tree only.
+#
+# Back when install.sh symlinked, DEST and REPO were the same inodes, so
+# chmod had to target the repo. A copy severs that, and chmod-ing the repo
+# became pure collateral damage: it rewrites tracked modes in the user's own
+# checkout, so `git status` comes back dirty after an install that changed
+# nothing they wrote. It also +x'd sourced-only libraries whose tracked mode
+# is deliberately 644, so the diff was not merely noise — it argued with the
+# files' own headers.
+#
+# rsync/cp preserve the source's mode bits, so the repo's git-tracked modes
+# already arrive correct; this pass makes it deterministic regardless of
+# which copy path ran. *.test.sh files are invoked via `sh <file>`
+# (scripts/test-all.sh), never executed directly, so they are skipped.
 if [ "$DRY" -eq 0 ]; then
-  chmod +x "$REPO/statusline.sh" 2>/dev/null || true
-  for f in "$REPO"/hooks/*.sh "$REPO"/hooks/lib/*.sh "$REPO"/scripts/*.sh; do
-    case "$f" in *.test.sh) continue ;; esac
-    chmod +x "$f" 2>/dev/null || true
-  done
-  for f in "$REPO"/bin/*; do
-    case "$f" in *.test.sh) continue ;; esac
-    chmod +x "$f" 2>/dev/null || true
-  done
-  # ...and on the just-copied DEST tree — a real copy no longer inherits
-  # chmod changes to the repo automatically the way a symlink did, so this
-  # has to be asserted on both sides. rsync/cp preserve the source's mode
-  # bits, but this makes it deterministic regardless of which copy path ran.
   chmod +x "$DEST/statusline.sh" 2>/dev/null || true
   for f in "$DEST"/hooks/*.sh "$DEST"/hooks/lib/*.sh "$DEST"/scripts/*.sh; do
     case "$f" in *.test.sh) continue ;; esac

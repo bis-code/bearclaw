@@ -41,7 +41,7 @@ Every hook also takes environment seams (`*_DIR`, `*_BIN`, `*_CMD` overrides) so
 | Script | Why it exists |
 |---|---|
 | `sessionstart-load-memory.sh` | The harness only natively loads memory for the current directory's project dir. This surfaces memory regardless of cwd: the global index, the last few global `ERRORS.md` entries, and the current repo's local index. Best-effort — missing files are skipped, and it always exits 0. Honors a slim mode (`memorySlimLoad`) that skips eager dumps because the recall hook serves bodies on demand. |
-| `sessionstart-heal-settings.sh` | Claude Code atomic-writes `settings.json` on `/config`, `/effort`, and plugin changes. The temp-file rename replaces the repo **symlink with a real file** and drops repo-only keys (`effortLevel` was observed lost this way). This hook detects the clobber, merges the live file's keys back into the repo's canonical `settings.json` so nothing is lost, and re-asserts the symlink. Idempotent — a no-op when the symlink is intact. |
+| `sessionstart-heal-settings.sh` | Claude Code atomic-writes `settings.json` on `/config`, `/effort`, and plugin changes, and the temp-file rename drops repo-only keys (`effortLevel` was observed lost this way). This hook merges the live file's keys back into the repo's canonical `settings.json` so nothing is lost. Under copy-on-install there is no symlink left to clobber — LIVE and CANON are two independent real files — so the hook is a key-level merge rather than a link repair, and a no-op when they already agree. |
 
 ### PreToolUse
 

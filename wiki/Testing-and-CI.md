@@ -101,9 +101,9 @@ Two implementation notes, both there to prevent the gate failing open and silent
 4. The identity gate
 5. The full test suite
 6. `install.sh --dry-run` into a temp root
-7. An **install/uninstall round-trip** into a temp root, asserting `settings.json` is a symlink after install and is not after uninstall
+7. A **real install into a temp root, run twice**, asserting `settings.json` exists and is *not* a symlink, that `.installed-from` records a `sha=`, and that a second run over the same destination still succeeds
 
-Step 7 is what makes the installer's guarantees real rather than documentary: it proves both that the install links what it claims and that the uninstall removes it.
+Step 7 is what makes the installer's guarantees real rather than documentary: it proves the install copies rather than links, records where it came from, and is idempotent. It replaced an install/uninstall round-trip that asserted `settings.json` *was* a symlink — an assertion copy-on-install inverted. That step kept passing on the old contract until a push made CI say otherwise, which is the argument for keeping the workflow file in scope whenever installation changes.
 
 ## The macOS ↔ Linux portability trap
 
