@@ -66,7 +66,7 @@ teardown() { rm -rf "$FIX"; }
 
 @test "a configured (non-none) backend emits the recall-served banner and skips eager dumps" {
   printf -- '- [Thing](thing.md) — a hook\n' > "$GMD/MEMORY.md"
-  BACKEND=cognee run HOOK '{"cwd":"/tmp"}'
+  BACKEND=local-embed run HOOK '{"cwd":"/tmp"}'
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("recall-served")'
   ! ( echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Thing")' )

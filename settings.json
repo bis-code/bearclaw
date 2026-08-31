@@ -1,7 +1,9 @@
 {
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
-    "SECURITY_REVIEW_MODEL": "claude-sonnet-5"
+    "SECURITY_REVIEW_MODEL": "claude-sonnet-5",
+    "PONYTAIL_DEFAULT_MODE": "full",
+    "PONYTAIL_SUBAGENT_MATCHER": "general-purpose|Explore|build-error-resolver|incident-debugger"
   },
   "permissions": {
     "allow": [
@@ -113,6 +115,11 @@
             "command": "$HOME/.claude/hooks/sessionstart-roadmap-nudge.sh",
             "timeout": 10,
             "async": false
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/sessionstart-graphify-nudge.sh",
+            "timeout": 5
           }
         ]
       }
@@ -320,7 +327,8 @@
     "swift-lsp@claude-plugins-official": false,
     "frontend-design@claude-plugins-official": true,
     "pr-review-toolkit@claude-plugins-official": false,
-    "plugin-dev@claude-plugins-official": true
+    "plugin-dev@claude-plugins-official": true,
+    "ponytail@ponytail": true
   },
   "autoCompactWindow": 500000,
   "verbose": true,

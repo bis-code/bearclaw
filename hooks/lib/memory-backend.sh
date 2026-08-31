@@ -2,11 +2,13 @@
 # hooks/lib/memory-backend.sh — pluggable memory-backend dispatcher (SOURCED,
 # not executed — it defines functions in the caller's shell).
 #
-# The memory system is migrating leann -> Cognee. This file is the seam: a
-# caller sources it, then calls one of the functions below instead of talking
-# to any specific backend directly. The public twin (bearclaw) never depends
-# on either backend — with no backend configured, callers fall back to plain
-# grep or eager file reads.
+# Default backend is "none" (plain file reads — no setup required). One
+# opt-in backend is wired: local-embed, a small fastembed index over
+# memory-global/*.md (install a local embedding model, set memoryBackend to
+# "local-embed"). This file is the seam: a caller sources it, then calls one
+# of the functions below instead of talking to any specific backend
+# directly — with no backend configured, callers fall back to plain grep or
+# eager file reads.
 #
 # Functions:
 #   membackend_name
@@ -66,8 +68,8 @@ _membackend_dispatch() {
     none)
       return 3
       ;;
-    cognee)
-      _mb_script="$(_membackend_lib_dir)/membackend-cognee.sh"
+    local-embed)
+      _mb_script="$(_membackend_lib_dir)/membackend-$_mb_backend.sh"
       if [ -x "$_mb_script" ]; then
         "$_mb_script" "$_mb_op" "$@"
         return $?

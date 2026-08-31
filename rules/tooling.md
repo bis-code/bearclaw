@@ -26,21 +26,34 @@ Pick one **before** editing and announce in one sentence:
 | Sequential work touching auth/payment/credentials, or cross-module refactor | `superpowers:subagent-driven-development` |
 | Unsure | `superpowers:executing-plans` |
 
-If 2+ files are in scope: dispatch is mandatory. On a 3rd consecutive direct
-`Edit` without dispatch — stop and dispatch.
+**Dispatch trigger (the rule):** parallelize only when lanes are
+independent AND each lane's work exceeds its spawn overhead (~context startup
+per agent) — not on a file count. A 3-file sequential edit beats a 3-agent
+fan-out; a 20-file migration or multi-angle review earns one. Bound fan-outs
+(≤2 opus per 5 lanes — rules/model-selection.md) and state what was NOT
+covered when capping.
 
-### Pre-dispatch lane matrix + fan-out economics
+Every Agent dispatch prompt states an explicit output cap (word/line budget)
+and "no methodology narration." Enumeration/inventory lanes route to haiku,
+or to a local lane when reachable local workers were reported, otherwise
+haiku.
+
+### Pre-dispatch lane matrix
 
 Before any **parallel** dispatch, write a one-line-per-lane matrix and announce
 it: `| lane | parallel-safe? | write surface | risk |`. Two lanes sharing a
 write surface are NOT parallel-safe — sequence them or give each a worktree
 (`isolation: "worktree"`).
 
-Fan-out economics (W7): parallelize only when lanes are independent AND each
-lane's work exceeds its spawn overhead (~context startup per agent). A 3-file
-sequential edit beats a 3-agent fan-out; a 20-file migration or multi-angle
-review earns the fan-out. Bound fan-outs (≤2 opus per 5 lanes —
-rules/model-selection.md) and state what was NOT covered when capping.
+## Local as consultant
+
+When local lanes are reachable, delegate FIRST-PASS extraction, classification,
+triage, or summarization of large inputs to them (`local_extract`/
+`local_classify`/`local_summarize`) and reason over the structured output —
+don't do the raw pass yourself. Treat `local_review` as a second opinion to
+WEIGH, not obey. HARD LIMIT: structured/filtering output only — never
+judgment, code, or diffs (a wrong local judgment costs more than it saves).
+Capability-gated; scales via the lane scoreboard as lanes prove out.
 
 ## Hooks can't trigger slash commands
 

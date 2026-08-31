@@ -2,6 +2,12 @@
 # Tests for memory-promote.sh — promotion flow with a stubbed dedup search.
 # NO set -e: several cases capture intentionally non-zero exits (3/4/1).
 DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
+# Hermetic default: memory-promote.sh's dedup step (memory-dedup.sh) tries the
+# real backend adapter FIRST, before the MEMORY_SEARCH_CMD stub below ever
+# runs — without this, a machine with a real backend configured (e.g.
+# memoryBackend=local-embed) would get REAL, test-irrelevant hits instead of
+# the synthetic ones these cases are asserting against.
+export MEMORY_BACKEND=none
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 PASS=0; FAIL=0

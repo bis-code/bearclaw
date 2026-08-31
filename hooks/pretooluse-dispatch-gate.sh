@@ -7,7 +7,10 @@
 # passes (informed choice, no lockout). Evidence: June 2026 audit — 73% of
 # 2,443 dispatches were general-purpose despite the prose rule; May's prose
 # fix moved nothing. Secondary advisory (once/session, never denies): missing
-# `model:` on a dispatch (model-selection.md meta-rule 1).
+# `model:` on a dispatch (model-selection.md meta-rule 1). Also routes
+# code-structure-shaped prompts (GP or explicit Explore) to graphify's
+# query_graph instead, and excludes web-research-shaped prompts from the
+# Explore trigger (general-purpose is correct there).
 # Env seams (tests): CLAUDE_DISPATCH_STATE_DIR.
 
 INPUT=$(cat)
@@ -18,6 +21,7 @@ SID=$(printf '%s' "$INPUT" | jq -r '.session_id // "nosession"' 2>/dev/null)
 SUB=$(printf '%s' "$INPUT" | jq -r '.tool_input.subagent_type // empty' 2>/dev/null)
 MODEL=$(printf '%s' "$INPUT" | jq -r '.tool_input.model // empty' 2>/dev/null)
 TEXT=$(printf '%s' "$INPUT" | jq -r '((.tool_input.prompt // "") + " " + (.tool_input.description // ""))' 2>/dev/null)
+m(){ printf '%s' "$TEXT" | grep -qiE "$1"; }
 
 STATE_DIR="${CLAUDE_DISPATCH_STATE_DIR:-${TMPDIR:-/tmp}}"
 
@@ -58,8 +62,20 @@ esac
 #   match  -> a NAMED AGENT still on the roster (dispatch it instead)
 #   alt    -> a SKILL / NATIVE FLOW that replaced a retired agent
 match=""; alt=""; altkey=""
-if [ "$GP" -eq 1 ] && [ -n "$TEXT" ]; then
-  m(){ printf '%s' "$TEXT" | grep -qiE "$1"; }
+
+# --- Graph-first: code-structure questions (what calls/connects X, where is
+# X used, dependency of Y) resolve straight from graphify's query_graph /
+# shortest_path / get_node — no subagent needed. Applies to GP dispatches AND
+# explicit Explore dispatches (Explore was the prior catch-all for this
+# shape). Same once/session soft-deny mechanism as everything else here.
+# Keep in sync with CLAUDE.md's "## Code Search" split.
+if { [ "$GP" -eq 1 ] || [ "$SUB" = "Explore" ]; } && [ -n "$TEXT" ] \
+  && m 'what (calls|connects|uses)|who (calls|uses)|where is .* used|depend(s|ency|encies) (on|of)|dependency (graph|chain)'; then
+  alt="the graphify MCP tool query_graph (or shortest_path/get_node) for this code-structure question — no subagent needed"
+  altkey=graphify
+fi
+
+if [ "$GP" -eq 1 ] && [ -z "$alt" ] && [ -n "$TEXT" ]; then
   if   m 'build (fail|error|broke)|compile error|ci (fail|red|broke)|lint (fail|error)'; then match=build-error-resolver
   elif m 'runtime (bug|error)|flaky test|race condition|behaves wrong|unexpected (500|behavior)'; then match=incident-debugger
   elif m 'security (review|audit)|owasp|vulnerab'; then alt="the /security-review skill (security-reviewer agent retired 2026-08-16)"; altkey=securityreview
@@ -77,7 +93,8 @@ if [ "$GP" -eq 1 ] && [ -n "$TEXT" ]; then
   elif m 'claude code (feature|hook|setting|command|mcp|question|cli)|claude agent sdk|anthropic api|claude api'; then match=claude-code-guide
   elif m 'trace (the |how )|how does .* work|understand how .* (work|behave)|map the (architecture|execution)'; then match=feature-dev:code-explorer
   elif m 'review (the |this |my )?(diff|changes?|pr|code)'; then alt="the /code-review skill (code-reviewer agent retired 2026-08-16)"; altkey=codereview
-  elif m 'explore the codebase|search across|find (where|all|every|the file|every (place|usage|reference))|locate (the|where|every)|survey (the|all)'; then match=Explore
+  elif m 'explore the codebase|search across|find (where|all|every|the file|every (place|usage|reference))|locate (the|where|every)|survey (the|all)' \
+    && ! m 'websearch|webfetch|web research|https?://|urls? to fetch'; then match=Explore
   fi
 fi
 

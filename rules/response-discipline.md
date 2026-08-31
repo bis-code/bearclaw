@@ -15,8 +15,7 @@ Source: Karpathy on LLM coding agents.
 - **Distrust confident output.** LLMs hallucinate in the same confident register
   as correct answers. Flag uncertainty explicitly; never fake confidence. Verify
   before claiming done (see `superpowers:verification-before-completion`).
-- **Simplest solution first.** No unnecessary abstractions. Solve the task in
-  front of you, not the imagined future one (YAGNI).
+- Simplest-first/YAGNI enforcement: ponytail plugin.
 
 ## House style (our preference — NOT attributed to Karpathy)
 <!-- Provenance: The viral "Karpathy rules" thread attributes these to him; primary sources do not.
