@@ -53,7 +53,7 @@ visible choice — it checks only, and never installs software itself. See
 ```
 CLAUDE.md           # user-scope context, loaded every session
 .mcp.json           # MCP servers (deep-think now ships as the deep-think@bis-code plugin; hooks degrade if absent)
-settings.json       # 10 configured plugins (8 enabled by default), 19 wired hooks, effortLevel, autoCompactWindow
+settings.json       # 11 configured plugins (9 enabled by default), 19 wired hooks, effortLevel, autoCompactWindow
 statusline.sh       # status line (model · cwd · branch · token meters)
 rules/              # canonical rules — behavioral instructions, loaded every session
 skills/             # 16 skills (handoff, handoff-autonomously, goal-prompt, walkthrough, ...)
@@ -171,7 +171,9 @@ to version it in your own fork (see the comment in `.gitignore`).
 | `jq` | JSON parsing throughout hooks and scripts | Required — most hooks fail open, but install this one first. |
 | `gh` | `roadmap` skill, PR/issue-aware workflows | Those skills degrade to "ask the user to run gh manually." |
 | `leann` | Semantic memory recall (`userpromptsubmit-memory-recall.sh`, `stop-memory-index-rebuild.sh`) | Memory still works as plain file reads — just no similarity search. `install.sh` prints a note and skips index building. |
+| `fastembed` (in a venv `install.sh` sets up, guarded on `python3`) | The `local-embed` memory backend — a lighter, no-service alternative to `leann` (`hooks/lib/local-embed.py`) | `memoryBackend` stays `none` (plain file reads); set it to `local-embed` in `settings.json` once the venv is usable to opt in. |
 | `deep-think@bis-code` (Claude Code plugin) | Architecture/design nudges (`userpromptsubmit-deepthink-nudge.sh`) | Hook degrades silently; you reason without the nudge. `install.sh` installs the plugin automatically if the `claude` CLI is on PATH. |
+| `ponytail@ponytail` (Claude Code plugin) | Enabled by default in `settings.json`, but its marketplace source is machine-local (like any third-party marketplace) so a fresh checkout won't have it installed yet: `claude plugin marketplace add DietrichGebert/ponytail && claude plugin install ponytail@ponytail -y` | Claude Code ignores an enabled plugin it can't resolve; nothing breaks, you just don't get ponytail's nudges until installed. |
 | `bats`, `shellcheck` | Running the test suite / pre-push lint yourself | CI still runs them; you just can't run `scripts/test-all.sh` locally without `bats`. |
 
 ## Doctor

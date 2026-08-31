@@ -61,6 +61,29 @@ printf '%s' "$out" | grep -q 'security-review skill' && ok "t11 names replacemen
 out=$(run '{"tool_name":"Agent","tool_input":{"subagent_type":"general-purpose","model":"sonnet","prompt":"do a python code review of the changed service"},"session_id":"s12"}')
 printf '%s' "$out" | grep -q 'language-reviewer' && ok "t12 names language-reviewer" || bad "t12" "$out"
 
+# t13: web-research-shaped prompt hits the old Explore trigger words but must
+# NOT be routed to Explore — general-purpose is correct for it.
+out=$(run '{"tool_name":"Agent","tool_input":{"subagent_type":"general-purpose","model":"haiku","prompt":"search across these pages via WebFetch, urls to fetch: https://a.example/, https://b.example/"},"session_id":"s13"}')
+[ -z "$out" ] && ok "t13 web-research not routed to Explore" || bad "t13" "$out"
+
+# t14: code-structure-shaped prompt on a GP dispatch -> denied once, suggests graphify query_graph
+out=$(run '{"tool_name":"Agent","tool_input":{"subagent_type":"general-purpose","model":"sonnet","prompt":"where is UserService used in the codebase"},"session_id":"s14"}')
+printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision=="deny"' >/dev/null 2>&1 && ok "t14 structural GP denied" || bad "t14" "$out"
+printf '%s' "$out" | grep -q 'query_graph' && ok "t14 suggests graphify" || bad "t14 suggestion" "$out"
+
+# t15: re-issue same structural prompt in same session -> allowed (once/session)
+out=$(run '{"tool_name":"Agent","tool_input":{"subagent_type":"general-purpose","model":"sonnet","prompt":"where is UserService used in the codebase"},"session_id":"s14"}')
+[ -z "$out" ] && ok "t15 structural re-issue passes" || bad "t15" "$out"
+
+# t16: code-structure-shaped prompt on an explicit Explore dispatch -> also denied once, suggests graphify
+out=$(run '{"tool_name":"Agent","tool_input":{"subagent_type":"Explore","model":"haiku","prompt":"what calls the payment service across the repo"},"session_id":"s16"}')
+printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision=="deny"' >/dev/null 2>&1 && ok "t16 structural Explore denied" || bad "t16" "$out"
+printf '%s' "$out" | grep -q 'query_graph' && ok "t16 suggests graphify" || bad "t16 suggestion" "$out"
+
+# t17: re-issue same structural prompt as Explore in same session -> allowed
+out=$(run '{"tool_name":"Agent","tool_input":{"subagent_type":"Explore","model":"haiku","prompt":"what calls the payment service across the repo"},"session_id":"s16"}')
+[ -z "$out" ] && ok "t17 structural Explore re-issue passes" || bad "t17" "$out"
+
 echo
 [ "$fail" -eq 0 ] && echo "ALL PASS" || echo "SOME FAILED"
 exit "$fail"

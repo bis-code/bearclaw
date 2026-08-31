@@ -34,13 +34,13 @@ TMP=$(mktemp -d)
 # ---- membackend_name resolution order: env > settings.json > none ----
 
 mkdir -p "$TMP/with-settings"
-printf '{"memoryBackend": "cognee"}\n' > "$TMP/with-settings/settings.json"
+printf '{"memoryBackend": "local-embed"}\n' > "$TMP/with-settings/settings.json"
 
 out=$(CLAUDE_CONFIG_DIR="$TMP/with-settings" MEMORY_BACKEND=none membackend_name)
 check "env wins over settings.json" "$out" "^none$"
 
 out=$(CLAUDE_CONFIG_DIR="$TMP/with-settings" membackend_name)
-check "settings.json wins over default" "$out" "^cognee$"
+check "settings.json wins over default" "$out" "^local-embed$"
 
 mkdir -p "$TMP/no-settings"
 out=$(CLAUDE_CONFIG_DIR="$TMP/no-settings" membackend_name)
@@ -64,22 +64,19 @@ checkrc "unknown backend -> exit 3" "$rc" 3
 check "unknown backend -> stderr notice" "$err" "unknown backend"
 unset MEMORY_BACKEND
 
-# ---- cognee stub: exits 3 with the "not configured" message ----
+# ---- dispatch actually reaches membackend-local-embed.sh when
+# backend=local-embed, using a bogus venv so the assertion is hermetic
+# regardless of whether fastembed happens to be installed here.
 
-err=$("$DIR/membackend-cognee.sh" search some-corpus "a query" 5 2>&1 1>/dev/null); rc=$?
-checkrc "cognee stub direct call -> exit 3" "$rc" 3
-check "cognee stub direct call -> stderr message" "$err" "cognee backend not configured on this machine"
-
-# ---- dispatch actually reaches the cognee stub when backend=cognee ----
-
-export MEMORY_BACKEND=cognee
+export MEMORY_BACKEND=local-embed
+export MEMORY_VENV="$TMP/no-such-venv"
 err=$(membackend_search some-corpus "a query" 5 2>&1 1>/dev/null); rc=$?
-checkrc "dispatch to cognee stub -> exit 3" "$rc" 3
-check "dispatch to cognee stub -> stub message surfaces" "$err" "cognee backend not configured on this machine"
+checkrc "dispatch to local-embed -> exit 3 (no venv)" "$rc" 3
+check "dispatch to local-embed -> venv-missing message surfaces" "$err" "venv python not found"
 
 err=$(membackend_dedup some-corpus "$TMP/cand.md" 2>&1 1>/dev/null); rc=$?
-checkrc "dedup dispatch to cognee stub -> exit 3" "$rc" 3
-unset MEMORY_BACKEND
+checkrc "dedup dispatch to local-embed -> exit 3 (no venv)" "$rc" 3
+unset MEMORY_BACKEND MEMORY_VENV
 
 rm -rf "$TMP"
 

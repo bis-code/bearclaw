@@ -21,6 +21,10 @@ plugins/
 backups/
 .leann/
 
+# graphify build output — regenerated locally (git config graphify.rebuild
+# opts a repo in; see bin/graphify-on), never tracked
+graphify-out/
+
 # Your personal persona — never tracked
 rules/about-me.local.md
 

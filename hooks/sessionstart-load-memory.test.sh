@@ -82,7 +82,7 @@ printf '## [2026-01-01] err one — fix one\n- **Trigger:** err-trigger-one\n- *
 # run_slim: run hook with a configured (non-none) backend -> slim path
 run_slim(){ printf '{"cwd":"%s"}\n' "$MAIN" \
   | env MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX=test-memory-global XDG_STATE_HOME="$STATE_DIR" \
-    MEMORY_BACKEND=cognee GLOBAL_MEM_DIR="$SLIM_GLOBAL" \
+    MEMORY_BACKEND=local-embed GLOBAL_MEM_DIR="$SLIM_GLOBAL" \
     sh "$HOOK" 2>/dev/null \
   | jq -r '.hookSpecificOutput.additionalContext // ""'; }
 
@@ -110,25 +110,25 @@ printf '%s' "$full_out" | grep -q "WORKTREE-CANARY-TOKEN" \
   && ok "t13 backend=none: repo-local MEMORY.md appears (eager)" \
   || bad "t13" "repo-local MEMORY.md missing when backend=none"
 
-# T14 (backend=cognee): global MEMORY.md eager dump is ABSENT
+# T14 (backend=local-embed): global MEMORY.md eager dump is ABSENT
 printf '%s' "$slim_out" | grep -q "GLOBAL-MEM-CANARY" \
-  && bad "t14" "global MEMORY.md appeared with backend=cognee" \
-  || ok "t14 backend=cognee: global MEMORY.md eager dump absent (slim)"
+  && bad "t14" "global MEMORY.md appeared with backend=local-embed" \
+  || ok "t14 backend=local-embed: global MEMORY.md eager dump absent (slim)"
 
-# T15 (backend=cognee): global ERRORS eager dump is ABSENT
+# T15 (backend=local-embed): global ERRORS eager dump is ABSENT
 printf '%s' "$slim_out" | grep -q "err-trigger-one" \
-  && bad "t15" "global ERRORS appeared with backend=cognee" \
-  || ok "t15 backend=cognee: global ERRORS eager dump absent (slim)"
+  && bad "t15" "global ERRORS appeared with backend=local-embed" \
+  || ok "t15 backend=local-embed: global ERRORS eager dump absent (slim)"
 
-# T16 (backend=cognee): repo-local MEMORY.md eager dump is ABSENT
+# T16 (backend=local-embed): repo-local MEMORY.md eager dump is ABSENT
 printf '%s' "$slim_out" | grep -q "WORKTREE-CANARY-TOKEN" \
-  && bad "t16" "repo-local MEMORY.md appeared with backend=cognee" \
-  || ok "t16 backend=cognee: repo-local MEMORY.md eager dump absent (slim)"
+  && bad "t16" "repo-local MEMORY.md appeared with backend=local-embed" \
+  || ok "t16 backend=local-embed: repo-local MEMORY.md eager dump absent (slim)"
 
-# T17 (backend=cognee): recall-served pointer line IS present
+# T17 (backend=local-embed): recall-served pointer line IS present
 printf '%s' "$slim_out" | grep -q "recall-served" \
-  && ok "t17 backend=cognee: recall-served pointer present (slim)" \
-  || bad "t17" "recall-served pointer missing with backend=cognee"
+  && ok "t17 backend=local-embed: recall-served pointer present (slim)" \
+  || bad "t17" "recall-served pointer missing with backend=local-embed"
 
 # T18: no leann call anywhere in the hook's own EXECUTABLE source (T9
 # requirement — the backend-aware gate must not invoke leann directly; recall

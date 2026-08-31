@@ -13,8 +13,7 @@ A request to "fix X" is a license to fix X — **not** to touch adjacent code.
   field, or endpoint not explicitly named for removal. A bug fix does not delete
   working features.
 - Spotted an unrelated improvement? Propose it as a follow-up — don't fold it in.
-- Prefer the smallest diff that satisfies the stated issue. Resist refactoring code
-  you happen to be reading (YAGNI).
+- Smallest-diff/YAGNI enforcement: ponytail plugin.
 
 ## Dead code — handle, don't ignore
 <!-- Provenance: F15 — "I'll leave the dead one alone" correction, 2026-06-17.

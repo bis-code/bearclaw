@@ -271,5 +271,36 @@ else
   say "note: leann not found — semantic memory recall is disabled (everything else works)"
 fi
 
+# Optional: local-embed memory backend (a lighter alternative to the leann
+# index above — a small fastembed index over memory-global/*.md, no service).
+# memoryBackend defaults to "none" (plain file reads); set it to "local-embed"
+# in settings.json to opt in once this venv is set up. Guarded on python3: a
+# machine without it degrades to memoryBackend=none, same as any other
+# missing-backend machine.
+MEMORY_VENV="${MEMORY_VENV:-$DEST/memory-venv}"
+if ! command -v python3 >/dev/null 2>&1; then
+  say "skip memory venv (python3 not installed — local-embed backend degrades to none)"
+elif [ "$DRY" -eq 1 ]; then
+  say "would: set up memory venv + fastembed for the local-embed backend"
+else
+  if [ ! -x "$MEMORY_VENV/bin/python3" ]; then
+    run python3 -m venv "$MEMORY_VENV"
+  fi
+  if "$MEMORY_VENV/bin/python3" -c 'import fastembed' >/dev/null 2>&1; then
+    say "ok   memory venv (fastembed already installed)"
+  elif "$MEMORY_VENV/bin/pip" install --quiet fastembed >/dev/null 2>&1; then
+    say "ok   memory venv (fastembed installed)"
+  else
+    say "WARN memory venv fastembed install failed — local-embed backend degrades to none until fixed"
+  fi
+  if [ -x "$MEMORY_VENV/bin/python3" ] && "$MEMORY_VENV/bin/python3" -c 'import fastembed' >/dev/null 2>&1; then
+    if "$MEMORY_VENV/bin/python3" "$REPO/hooks/lib/local-embed.py" build --corpus "$DEST/memory-global" >/dev/null 2>&1; then
+      say "ok   local-embed index (memory-global)"
+    else
+      say "WARN local-embed index build failed — recall falls back to none until fixed"
+    fi
+  fi
+fi
+
 [ -d "$BACKUP" ] && say "backups saved to: $BACKUP"
 say "done. run ./bin/claude-setup-doctor, then start a new Claude Code session."

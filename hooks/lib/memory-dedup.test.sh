@@ -3,6 +3,15 @@ set -e
 DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 PASS=0; FAIL=0
 
+# Hermetic default: most cases below exercise search() (the MEMORY_SEARCH_CMD
+# seam) in isolation and expect membackend_dedup to miss (exit 3) so the stub
+# alone drives the verdict. Without this, they'd silently pick up whatever
+# real backend is configured on the machine running the suite (e.g.
+# memoryBackend=local-embed after T15) and get REAL, test-irrelevant hits
+# instead — cases that need a different backend already export/unset their
+# own MEMORY_BACKEND around themselves.
+export MEMORY_BACKEND=none
+
 check() {
   label="$1"; out="$2"; expect="$3"
   if printf '%s' "$out" | grep -q "$expect"; then
@@ -86,6 +95,61 @@ out=$(sh "$DIR/memory-dedup.sh" some-index "candidate text")
 printf '%s' "$out" | grep -q "UNVERIFIED" \
   && { echo "FAIL: healthy empty-results run must NOT be UNVERIFIED"; FAIL=$((FAIL+1)); } \
   || { echo "PASS: healthy run stays two-token"; PASS=$((PASS+1)); }
+
+# 12. backend adapter says 3 (backend=none) -> falls through to the leann
+#     path unchanged (same near-dup case as test 1, pinned explicitly so this
+#     doesn't depend on the machine's real settings.json)
+export MEMORY_BACKEND=none
+export MEMORY_SEARCH_CMD='printf "[{\"id\":\"a\",\"score\":1.4,\"text\":\"leann memory dedup candidate text lesson learned\",\"metadata\":{}}]"'
+out=$(sh "$DIR/memory-dedup.sh" some-index "leann memory dedup candidate text lesson learned")
+check "adapter exit 3 (backend=none) -> leann path intact -> SKIP" "$out" "SKIP"
+unset MEMORY_BACKEND
+
+# 13. backend adapter succeeds (exit 0) -> its JSONL hits are used instead of
+#     calling leann at all (MEMORY_SEARCH_CMD below would give NEW if it were
+#     consulted — proves the adapter path wins, not just "did SKIP happen")
+ADAPTER_STUB_DIR=$(mktemp -d)
+cat > "$ADAPTER_STUB_DIR/membackend-local-embed.sh" <<'EOF'
+#!/bin/sh
+echo '{"score":0.9,"path":"x.md","snippet":"leann memory dedup candidate text lesson learned"}'
+exit 0
+EOF
+chmod +x "$ADAPTER_STUB_DIR/membackend-local-embed.sh"
+export MEMORY_BACKEND=local-embed
+export MEMBACKEND_LIB_DIR="$ADAPTER_STUB_DIR"
+export MEMORY_SEARCH_CMD='printf "[{\"id\":\"a\",\"score\":1.0,\"text\":\"totally unrelated leann fallback text\",\"metadata\":{}}]"'
+out=$(sh "$DIR/memory-dedup.sh" some-index "leann memory dedup candidate text lesson learned")
+check "adapter exit 0 -> its hits drive the verdict -> SKIP" "$out" "SKIP"
+unset MEMORY_BACKEND
+unset MEMBACKEND_LIB_DIR
+rm -rf "$ADAPTER_STUB_DIR"
+
+# 14. backend adapter reports SUCCESS (exit 0) but its stdout is unparseable
+#     garbage -> must NOT masquerade as "zero matches" (a silent "0.0 NEW"
+#     confident-wrong-verdict — reviewer repro). Must fall through to leann
+#     exactly like ADAPTER_RC=3 does; leann here has a genuine near-dup, so
+#     SKIP (not "0.0 NEW") proves the fallthrough actually ran, not just that
+#     a message was printed.
+GARBAGE_STUB_DIR=$(mktemp -d)
+cat > "$GARBAGE_STUB_DIR/membackend-local-embed.sh" <<'EOF'
+#!/bin/sh
+echo 'not-json{garbage'
+exit 0
+EOF
+chmod +x "$GARBAGE_STUB_DIR/membackend-local-embed.sh"
+export MEMORY_BACKEND=local-embed
+export MEMBACKEND_LIB_DIR="$GARBAGE_STUB_DIR"
+export MEMORY_SEARCH_CMD='printf "[{\"id\":\"a\",\"score\":1.4,\"text\":\"leann memory dedup candidate text lesson learned\",\"metadata\":{}}]"'
+
+out=$(sh "$DIR/memory-dedup.sh" some-index "leann memory dedup candidate text lesson learned" 2>/dev/null)
+check "adapter rc=0 + unparseable output -> falls through to leann -> SKIP (not silent 0.0 NEW)" "$out" "SKIP"
+
+err=$(sh "$DIR/memory-dedup.sh" some-index "leann memory dedup candidate text lesson learned" 2>&1 1>/dev/null)
+check "adapter rc=0 + unparseable output -> stderr notice surfaces" "$err" "unparseable"
+
+unset MEMORY_BACKEND
+unset MEMBACKEND_LIB_DIR
+rm -rf "$GARBAGE_STUB_DIR"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

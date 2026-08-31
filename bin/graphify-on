@@ -1,0 +1,27 @@
+#!/bin/sh
+# graphify-on — enable graphify for the current repo: build the graph once,
+# then opt this repo into graphify's own post-commit rebuild.
+#
+# Companion to hooks/sessionstart-graphify-nudge.sh, which only ever nudges —
+# this is the one command that actually builds anything, and only when a
+# human runs it.
+#
+# `graphify . --code-only` — same invocation as git-hooks/dispatch's
+# post-commit rebuild (T4): local AST only, no API key or backend config
+# required, so this is safe to run unattended the first time. Re-run anytime
+# to rebuild; graphify's own incremental manifest gate makes repeat runs cheap.
+set -e
+
+if ! command -v graphify >/dev/null 2>&1; then
+  echo "graphify-on: 'graphify' not found on PATH." >&2
+  echo "  Install it (e.g. \`pip install graphifyy\`, pinned per CLAUDE.md), then re-run." >&2
+  exit 1
+fi
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "graphify-on: not inside a git repo." >&2; exit 1; }
+
+graphify . --code-only
+git config --local graphify.rebuild true
+
+echo "graphify-on: graph built (graphify-out/graph.json) and graphify.rebuild=true for this repo."
+echo "graphify-on: query it via the graphify MCP tools (query_graph/shortest_path/get_node) or \`graphify query \"...\"\`."

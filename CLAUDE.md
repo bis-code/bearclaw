@@ -98,3 +98,8 @@ User-maintained: `editing-pr-descriptions`, `handoff` (+ autonomous mode as
 Plan-execution chain: `superpowers:writing-plans` → `superpowers:executing-plans`
 (≤5 small tasks) or `superpowers:subagent-driven-development` (3+ independent
 workstreams). Don't leave a plan dangling.
+
+Installed: `graphify` — codebase knowledge graph, MCP server registered in
+`.mcp.json`. Opt in per-repo with `bin/graphify-on` (builds the graph once and
+flips the repo's own post-commit rebuild on); a `SessionStart` hook nudges
+this once per repo when it looks unenabled, and never builds anything itself.

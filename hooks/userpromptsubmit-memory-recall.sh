@@ -5,6 +5,14 @@ DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 # Guard the dot-source: a failed source aborts the whole script under dash even
 # with set +e, which would emit a stderr error + non-zero exit on every prompt.
 [ -f "$DIR/lib/memory-store.sh" ] && . "$DIR/lib/memory-store.sh"
+# MEMBACKEND_LIB_DIR: this script lives in hooks/, not hooks/lib/, so
+# memory-backend.sh's own $0-based colocation lookup (documented in its
+# header) would resolve to the wrong directory — point it at hooks/lib/
+# explicitly, same seam it names for "future callers elsewhere".
+if [ -f "$DIR/lib/memory-backend.sh" ]; then
+  MEMBACKEND_LIB_DIR="$DIR/lib"
+  . "$DIR/lib/memory-backend.sh"
+fi
 INPUT=$(cat 2>/dev/null)
 PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null)
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
@@ -14,8 +22,25 @@ words=$(printf '%s' "$PROMPT" | wc -w | tr -d ' ')
 case "$PROMPT" in y|yes|no|ok|continue|/*) exit 0 ;; esac
 [ "$words" -ge 4 ] || exit 0
 
+# Global tier prefers the opt-in memory-backend adapter (local-embed);
+# "none" by default falls straight through. On any fallback signal — and
+# always for the repo tier, which the adapter's v1 scope doesn't cover
+# (a single corpus over memory-global/*.md, hooks/lib/local-embed.py) — falls
+# back to bearclaw's own leann index, so an install that already has leann
+# keeps its existing two-index recall unchanged. The adapter's JSONL
+# {"score","path","snippet"} needs reshaping into the {"score","text",
+# "metadata":{file_name}} array memory-recall.py expects; leann's own
+# `--json --show-metadata` output is already in that shape, so the fallback
+# passes straight through (as before this backend existed).
 search() { # <index>
   if [ -n "$MEMORY_SEARCH_CMD" ]; then eval "$MEMORY_SEARCH_CMD"; return; fi
+  if [ "$1" = "$GLOBAL_MEM_INDEX" ]; then
+    _sr=$(membackend_search "$1" "$PROMPT" 8)
+    if [ $? -eq 0 ] && [ -n "$_sr" ]; then
+      printf '%s\n' "$_sr" | jq -s '[.[] | {score: .score, text: .snippet, metadata: {file_name: (.path | split("/") | last)}}]' 2>/dev/null
+      return
+    fi
+  fi
   leann search "$1" "$PROMPT" --top-k 8 --json --non-interactive --show-metadata 2>/dev/null
 }
 # Global tier: derive the index name from the active config root

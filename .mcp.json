@@ -1,3 +1,8 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "graphify": {
+      "command": "graphify-mcp",
+      "args": []
+    }
+  }
 }
