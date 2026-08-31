@@ -195,6 +195,41 @@ printf '%s' "$full_out" | grep -q "^note: memory backend" \
   && bad "t23" "fallback note appeared with backend=none" \
   || ok "t23 backend=none: no fallback note"
 
+# ---- T25: the hook must resolve its OWN lib dir ---------------------------
+# Regression guard. Every slim test above INJECTS MEMBACKEND_LIB_DIR, so they
+# prove the gate logic given a correct lib dir -- they cannot see whether the
+# hook establishes one. It did not: memory-backend.sh's $0-based lookup
+# resolved to hooks/ (not hooks/lib/), so every dispatch returned 3 and the
+# gate was pinned to eager-load in production while these tests passed.
+# Here the hook is copied into a self-contained tree and run with NO
+# MEMBACKEND_LIB_DIR: it passes only if the hook points the dispatcher at its
+# own lib/ directory.
+SELF="$TMP/selfres"; mkdir -p "$SELF/lib"
+cp "$HOOK" "$SELF/$(basename "$HOOK")"
+cp "$(dirname "$HOOK")/lib/memory-backend.sh" "$SELF/lib/memory-backend.sh"
+# Stubbed as local-embed, the one backend this repo's dispatcher wires. The
+# backend name is incidental to what t25 proves (that the hook points the
+# dispatcher at its own lib/), but it cannot be a name the dispatcher rejects:
+# an unknown name returns 3 exactly like an unresolved lib dir, so the test
+# would fail for the wrong reason and read as the bug it guards against.
+cat > "$SELF/lib/membackend-local-embed.sh" <<'STUBEOF'
+#!/bin/sh
+case "$1" in
+  health) exit 0 ;;
+  *) exit 3 ;;
+esac
+STUBEOF
+chmod +x "$SELF/lib/membackend-local-embed.sh"
+selfres_out=$(printf '{"cwd":"%s"}\n' "$MAIN" \
+  | env MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX=test-memory-global \
+    XDG_STATE_HOME="$STATE_DIR" MEMORY_BACKEND=local-embed \
+    GLOBAL_MEM_DIR="$SLIM_GLOBAL" \
+    sh "$SELF/$(basename "$HOOK")" 2>/dev/null \
+  | jq -r '.hookSpecificOutput.additionalContext // ""')
+printf '%s' "$selfres_out" | grep -q "^note: memory backend" \
+  && bad "t25" "hook did not resolve its own lib dir (dispatch fell back to 'not ready')" \
+  || ok "t25 hook resolves its own MEMBACKEND_LIB_DIR (no injection)"
+
 echo
 [ "$fail" -eq 0 ] && echo "ALL PASS" || echo "SOME FAILED"
 exit "$fail"

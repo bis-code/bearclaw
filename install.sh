@@ -294,8 +294,16 @@ else
     say "WARN memory venv fastembed install failed — local-embed backend degrades to none until fixed"
   fi
   if [ -x "$MEMORY_VENV/bin/python3" ] && "$MEMORY_VENV/bin/python3" -c 'import fastembed' >/dev/null 2>&1; then
-    if "$MEMORY_VENV/bin/python3" "$REPO/hooks/lib/local-embed.py" build --corpus "$DEST/memory-global" >/dev/null 2>&1; then
-      say "ok   local-embed index (memory-global)"
+    # Build under the corpus NAME the hooks search, not the builder's default
+    # key. Indexes are one-file-per-corpus now, so a build under any other key
+    # writes an index nothing ever reads — the recall gate then reports the
+    # backend unhealthy and every session eager-loads instead, with no error
+    # anywhere to explain it. Derived by the same function the hooks use, so
+    # the two cannot drift.
+    GLOBAL_IDX=$(CLAUDE_CONFIG_DIR="$DEST" sh -c '. "'"$REPO"'/hooks/lib/memory-roots.sh"; memroots_global_index')
+    if MEMORY_VENV="$MEMORY_VENV" CLAUDE_CONFIG_DIR="$DEST" \
+       sh "$REPO/hooks/lib/membackend-local-embed.sh" build "$GLOBAL_IDX" "$DEST/memory-global" >/dev/null 2>&1; then
+      say "ok   local-embed index (memory-global -> $GLOBAL_IDX)"
     else
       say "WARN local-embed index build failed — recall falls back to none until fixed"
     fi

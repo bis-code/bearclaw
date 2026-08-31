@@ -38,27 +38,49 @@ def _load_usage(path):
         return {}
     return stats
 
+# Ceiling on the usage boost. It is a TIEBREAKER, and the size is calibrated
+# from real score distributions rather than chosen: among the top candidates for
+# a live prompt, adjacent raw scores sit 2-3% apart while a clearly better match
+# leads by ~7%. A 5% ceiling therefore separates entries the embedder cannot
+# meaningfully distinguish, and cannot overturn one it can.
+#
+# It was 2.0x (+0.5 frequency, +0.5 recency), which is not a tiebreak — it is a
+# veto. Measured on the live log before this changed: ERRORS sat at the 2.0x
+# ceiling with 135 recalls, five more entries were pinned at >=1.9x, and a new
+# memory at 1.0x needed a raw score twice as high to place. Cosine scores here
+# live in 0.5-0.75, so twice as high is unreachable: once an entry was recalled
+# often enough, nothing could displace it. The system had surfaced 17 distinct
+# memories, ever, out of 44 — a rich-get-richer lock-in in which being recalled
+# was the main qualification for being recalled again. It also defeats a newly
+# indexed tier outright, since every entry in one starts cold.
+USAGE_BOOST_MAX_FREQ = 0.025      # saturates at 10 recalls
+USAGE_BOOST_MAX_RECENCY = 0.025   # full value today, gone after ~30 days
+
+
 def _usage_boost(rid, stats, now):
-    """Multiplier >= 1.0 from recall frequency + recency. Bounded."""
+    """Multiplier in [1.0, 1.05] from recall frequency + recency.
+
+    Breaks ties between entries the scores cannot separate. Deliberately too
+    small to promote a worse match over a better one — see the ceiling above.
+    """
     s = stats.get(rid)
     if not s:
         return 1.0
-    # frequency: saturating, capped at +0.5 (10+ recalls)
-    freq_factor = min(s.get("count", 0) * 0.05, 0.5)
-    # recency: +0.5 if recalled today, decaying to 0 over ~30 days
+    freq_factor = min(s.get("count", 0) * (USAGE_BOOST_MAX_FREQ / 10.0),
+                      USAGE_BOOST_MAX_FREQ)
     age_days = max((now - s.get("last_ts", 0)) / 86400.0, 0)
-    recency_factor = 0.5 * max(1.0 - age_days / 30.0, 0.0)
+    recency_factor = USAGE_BOOST_MAX_RECENCY * max(1.0 - age_days / 30.0, 0.0)
     return 1.0 + freq_factor + recency_factor
 
 def _file_flags(slug, mem_dirs, cache={}):
-    """Resolve recall_verify/pinned from the source entry's FRONTMATTER, so
-    non-first chunks of a multi-chunk entry still carry their flags (#12).
-    Never raises; missing file/dir → no flags."""
+    """Resolve recall_verify/pinned/superseded from the source entry's
+    FRONTMATTER, so non-first chunks of a multi-chunk entry still carry their
+    flags (#12). Never raises; missing file/dir → no flags."""
     if not slug or not mem_dirs:
-        return {"verify": False, "pinned": False}
+        return {"verify": False, "pinned": False, "superseded": False}
     if slug in cache:
         return cache[slug]
-    flags = {"verify": False, "pinned": False}
+    flags = {"verify": False, "pinned": False, "superseded": False}
     for d in mem_dirs:
         if not d:
             continue
@@ -75,6 +97,15 @@ def _file_flags(slug, mem_dirs, cache={}):
             flags["verify"] = True
         if re.search(r"(?m)^pinned:\s*true", fm):
             flags["pinned"] = True
+        # A memory that has been superseded but not deleted. Retiring by
+        # deletion loses the reasoning that made the old entry worth writing,
+        # and a fact that turned out wrong is itself worth keeping — but it must
+        # stop reaching prompts, because a confidently stated stale fact is
+        # worse than no memory at all. Observed: a note describing a search
+        # engine that had since been replaced kept being injected, carrying
+        # score thresholds that were wrong for the engine that replaced it.
+        if re.search(r"(?m)^status:\s*superseded", fm):
+            flags["superseded"] = True
     cache[slug] = flags
     return flags
 
@@ -112,6 +143,13 @@ def main():
             except Exception:
                 pass
             return str(r.get("id", ""))
+
+        # Superseded entries are dropped outright rather than demoted. A rank
+        # penalty still lets one through on a quiet query, and "mostly retired"
+        # is not a useful state for a fact that is simply no longer true.
+        kept = [r for r in kept if not _file_flags(_slug(r), a.mem_dir)["superseded"]]
+        if not kept:
+            return
 
         def effective(r):
             base = _score(r)

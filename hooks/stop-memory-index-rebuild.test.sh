@@ -11,7 +11,9 @@
 # scripts/tests/install.bats for the reference pattern). Every invocation below
 # MUST set MEMORY_BUILD_CMD / GLOBAL_MEM_INDEX / XDG_STATE_HOME so no test can
 # reach the real leann build or the real freshness stamp.
-HOOK="$(dirname "$0")/stop-memory-index-rebuild.sh"
+# Absolute: the multi-root cases below run the hook from other directories,
+# and a relative path would simply not resolve there.
+HOOK="$(CDPATH= cd "$(dirname "$0")" && pwd)/stop-memory-index-rebuild.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 fail=0
@@ -30,7 +32,14 @@ chmod +x "$BUILD_CMD"
 
 SAFE="GLOBAL_MEM_DIR=$MEM_DIR GLOBAL_MEM_INDEX=test-memory-global MEMORY_BUILD_CMD=$BUILD_CMD XDG_STATE_HOME=$STATE_DIR"
 
-run() { printf '{}' | env $SAFE sh "$HOOK"; }
+# Run from a NEUTRAL directory. The hook refreshes every memory root for its
+# cwd, so running it from inside this repo would also fire the claude-setup repo
+# tier and count its rebuild through the same stub — the test would be measuring
+# how many roots exist rather than whether mtime gating works. $TMP is not a git
+# repo and has no .claude/memory, so exactly one root (the stubbed global) is
+# emitted. The dedicated multi-root case is t5.
+NEUTRAL="$TMP/neutral"; mkdir -p "$NEUTRAL"
+run() { (cd "$NEUTRAL" && printf '{}' | env $SAFE sh "$HOOK"); }
 
 marker_lines() {
     if [ -f "$MARKER" ]; then
@@ -76,6 +85,30 @@ sleep 1   # ensure a distinguishable mtime past the stamp written in t2
 printf '# note\n' > "$MEM_DIR/a.md"
 run >/dev/null
 wait_for_count 2 && ok "t4 changed memory file triggers rebuild" || bad "t4" "marker lines=$(marker_lines)"
+
+# t5: the REPO tier is refreshed too. It is where a memory captured during the
+# session actually lands, and it was the one root this hook never refreshed — so
+# a note written mid-session stayed unsearchable until some later SessionStart
+# happened to notice it.
+#
+# Asserted on the tier's own stamp, not on a count of builds, because the
+# machine-wide cap in memory-index-freshness.sh deliberately allows only ONE
+# build per event: with two roots stale at once, one builds now and the other on
+# the next event. Re-invoking is what a real session does anyway (every Stop),
+# and it makes the test independent of which root wins the lock first.
+REPO_FIXTURE="$TMP/fixture-repo"
+mkdir -p "$REPO_FIXTURE/.claude/memory"
+printf 'a memory captured during the session\n' > "$REPO_FIXTURE/.claude/memory/note.md"
+FIXTURE_STAMP="$STATE_DIR/claude-memory/fixture-repo-memory.local-embed.built"
+n=0
+while [ "$n" -lt 8 ]; do
+  [ -f "$FIXTURE_STAMP" ] && break
+  (cd "$REPO_FIXTURE" && printf '{}' | env $SAFE MEMORY_BACKEND=local-embed sh "$HOOK") >/dev/null
+  sleep 0.4
+  n=$((n + 1))
+done
+[ -f "$FIXTURE_STAMP" ] && ok "t5 repo tier refreshed alongside global" \
+  || bad "t5 repo tier refreshed alongside global" "no stamp at $FIXTURE_STAMP"
 
 echo
 [ "$fail" -eq 0 ] && echo "ALL PASS" || echo "SOME FAILED"

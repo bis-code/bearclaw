@@ -18,7 +18,8 @@
 #
 #   membackend_search <corpus-name> <query> <top-k>
 #   membackend_dedup  <corpus-name> <candidate-file>
-#   membackend_health
+#   membackend_build  <corpus-name> <corpus-dir>
+#   membackend_health [<corpus-name>]
 #     Dispatch to the resolved backend. Exit-code contract (checked via $?
 #     after calling — these are shell functions, not subprocesses, so they
 #     `return`, never `exit`, and must not kill the sourcing script):
@@ -90,6 +91,13 @@ membackend_search() {
 
 membackend_dedup() {
   _membackend_dispatch dedup "$@"
+}
+
+# Rebuild <corpus-name>'s index from <corpus-dir>. Exists so the freshness path
+# can trigger a build without naming a backend: with no backend configured this
+# returns 3 and the caller no-ops, which is exactly what the public twin needs.
+membackend_build() {
+  _membackend_dispatch build "$@"
 }
 
 # 0 = backend is actually serving (venv/deps/index present); 3 = not serving

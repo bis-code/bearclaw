@@ -1,0 +1,105 @@
+#!/bin/sh
+# claude-memory-recall — search memory on demand, from the shell.
+#
+# sessionstart-load-memory.sh tells the model, every slim-mode session, that
+# memory "injects on-demand via the recall hook; search a symptom to pull it
+# up". Until now there was nothing to search with: the recall hook only fires on
+# a user prompt, so "pull it up" was an instruction with no mechanism. This is
+# the mechanism.
+#
+# Usage:
+#   claude-memory-recall <query>...          search every root for the cwd
+#   claude-memory-recall -k N <query>...     results per root (default 5)
+#   claude-memory-recall -C <dir> <query>... search the roots for another dir
+#   claude-memory-recall --roots             list the roots and their health
+#
+# Exit: 0 with results, 1 on a usage error, 3 when no backend can serve (same
+# fallback code the hooks use, so a caller can tell "nothing found" from
+# "nothing could look").
+set +e
+
+SELF=$(CDPATH= cd "$(dirname "$0")" && pwd)
+# Installed as ~/.claude/bin (a symlink into the repo) or run from the repo; in
+# both cases the hooks live one level up under hooks/.
+HOOKS="$SELF/../hooks"
+[ -d "$HOOKS" ] || HOOKS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks"
+if [ ! -f "$HOOKS/lib/memory-roots.sh" ]; then
+  echo "claude-memory-recall: cannot find hooks/lib next to $SELF" >&2
+  exit 1
+fi
+
+MEMBACKEND_LIB_DIR="$HOOKS/lib"
+. "$HOOKS/lib/memory-backend.sh"
+. "$HOOKS/lib/memory-roots.sh"
+
+TOPK=5
+TARGET=$(pwd)
+ROOTS_ONLY=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -k) TOPK="$2"; shift 2 ;;
+    -C) TARGET="$2"; shift 2 ;;
+    --roots) ROOTS_ONLY=1; shift ;;
+    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --) shift; break ;;
+    -*) echo "claude-memory-recall: unknown option $1" >&2; exit 1 ;;
+    *) break ;;
+  esac
+done
+
+BACKEND=$(membackend_name)
+if [ "$BACKEND" = "none" ]; then
+  echo "claude-memory-recall: no memory backend configured (settings.json memoryBackend)" >&2
+  exit 3
+fi
+
+if [ "$ROOTS_ONLY" -eq 1 ]; then
+  printf 'backend: %s\nroots for %s:\n' "$BACKEND" "$TARGET"
+  _any=0
+  while IFS="	" read -r _idx _dir; do
+    [ -n "$_idx" ] || continue
+    _any=1
+    if membackend_health "$_idx" >/dev/null 2>&1; then _h="indexed"; else _h="NOT INDEXED"; fi
+    printf '  %-14s %-28s %s\n' "$_h" "$_idx" "$_dir"
+  done <<EOF
+$(memroots_emit "$TARGET")
+EOF
+  [ "$_any" -eq 1 ] || echo "  (none)"
+  exit 0
+fi
+
+QUERY="$*"
+if [ -z "$QUERY" ]; then
+  echo "usage: claude-memory-recall [-k N] [-C dir] <query>..." >&2
+  exit 1
+fi
+
+# Print each root's hits under its own heading. Grouping by root rather than
+# merging by score is deliberate: read by a person, "which tier knew this" is
+# part of the answer — a cross-cutting global note and a repo's own curated
+# entry carry different authority, and a merged list hides which one answered.
+FOUND=0
+SERVED=0
+while IFS="	" read -r IDX DIR; do
+  [ -n "$IDX" ] || continue
+  OUT=$(membackend_search "$IDX" "$QUERY" "$TOPK" "$DIR" 2>/dev/null); rc=$?
+  [ "$rc" -eq 0 ] || continue
+  SERVED=1
+  [ -n "$OUT" ] || continue
+  N=$(printf '%s\n' "$OUT" | grep -c .)
+  [ "$N" -gt 0 ] || continue
+  FOUND=1
+  printf '\n== %s (%s) ==\n' "$IDX" "$DIR"
+  printf '%s\n' "$OUT" | jq -r '"  \(.score * 10000 | round / 10000)  \(.path | split("/") | last)\n      \(.snippet | gsub("\n"; " ") | .[0:160])"' 2>/dev/null \
+    || printf '%s\n' "$OUT"
+done <<EOF
+$(memroots_emit "$TARGET")
+EOF
+
+if [ "$SERVED" -eq 0 ]; then
+  echo "claude-memory-recall: backend '$BACKEND' could not serve any root (not indexed?)" >&2
+  echo "  try: claude-memory-recall --roots" >&2
+  exit 3
+fi
+[ "$FOUND" -eq 1 ] || echo "no memory matched: $QUERY" >&2
+exit 0

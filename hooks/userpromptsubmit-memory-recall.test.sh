@@ -49,3 +49,30 @@ out=$(printf '{"prompt":"how do deploys work in this system","cwd":"%s"}' "$TMP_
 echo "$out" | grep -q 'verify before relying' || { echo "FAIL 3: chunk-2 caveat not resolved from entry file"; exit 1; }
 echo "PASS"
 rm -rf "$TMP_P3"
+
+# --- an unbuilt tier must not write to stderr on every prompt ---------------
+# Searching every root means a repo whose index has not been built yet gets a
+# tier immediately, and the backend prints "no index at ... run build first"
+# for it. On the hot path that is one diagnostic per prompt, per unbuilt tier,
+# forever — and the prompt can do nothing with it. The hook must stay silent
+# and fail open. MEMORY_SEARCH_CMD must be UNSET, not merely unassigned: the
+# tests above export it, and the stub would replace the very dispatch whose
+# stderr this is about. Without the unset this passes with the fix reverted,
+# which is how it was first written and how it was caught.
+#
+# On a machine with no local-embed venv (CI) the adapter exits 3 before it can
+# print anything, so this check is satisfied without exercising the path. It is
+# a real check only where the backend is installed. That is a deliberate
+# trade — the alternative is a fake backend that prints on cue, which would
+# test the stub rather than the hook.
+unset MEMORY_SEARCH_CMD
+TMP_P5=$(mktemp -d)
+export MEMORY_STORE_DIR="$TMP_P5/store"
+mkdir -p "$TMP_P5/norepo/.claude/memory"
+printf -- '- a note in a tier that has never been indexed\n' \
+  > "$TMP_P5/norepo/.claude/memory/n.md"
+err=$(printf '{"prompt":"how does the memory index get rebuilt","cwd":"%s"}' "$TMP_P5/norepo" \
+      | MEMORY_BACKEND=local-embed sh "$DIR/userpromptsubmit-memory-recall.sh" 2>&1 >/dev/null)
+[ -z "$err" ] || { echo "FAIL: hook wrote to stderr for an unbuilt tier: $err"; exit 1; }
+echo "PASS"
+rm -rf "$TMP_P5"

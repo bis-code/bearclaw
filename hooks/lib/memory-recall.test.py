@@ -1,4 +1,4 @@
-import subprocess, json, sys
+import subprocess, json, sys, shutil
 from pathlib import Path
 
 SCRIPT = Path(__file__).parent / "memory-recall.py"
@@ -110,38 +110,104 @@ out_pinned_false = run2(results_pinned_false)
 assert out_pinned_false.index("plain stronger match again") < out_pinned_false.index("pinned: true somewhere in prose"), \
     f"in-body 'pinned: true' prose wrongly triggered boost: {out_pinned_false!r}"
 
-# Test 2: frequently+recently recalled entry gets boosted above a slightly-stronger cold one
+# Test 2: the usage boost breaks a TIE. 0.70 vs 0.71 is inside the band where
+# the embedder cannot meaningfully rank two entries, so recall history decides.
 log = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False)
 now_ts = int(time.time())
-for _ in range(5):
+for _ in range(10):
     log.write(json.dumps({"ts": now_ts, "ids": ["hot"]}) + "\n")
 log.flush()
 results_boost = [
-    {"id": "cold", "text": "cold stronger", "score": 0.72, "metadata": {}},
-    {"id": "hot",  "text": "hot weaker",    "score": 0.66, "metadata": {}},
+    {"id": "cold", "text": "cold stronger", "score": 0.71, "metadata": {}},
+    {"id": "hot",  "text": "hot weaker",    "score": 0.70, "metadata": {}},
 ]
 out_boost = run2(results_boost, usage=log.name)
 assert out_boost.index("hot weaker") < out_boost.index("cold stronger"), \
-    f"usage boost did not reorder: {out_boost!r}"
+    f"usage boost did not break a near-tie: {out_boost!r}"
 log.close()
 os.unlink(log.name)
+
+# Test 2a: ...and it must NOT overturn a clearly better match. This is the
+# regression that matters: at the old 2.0x ceiling a well-worn entry beat
+# anything, so the live system had surfaced 17 distinct memories out of 44 and a
+# newly indexed tier — every entry cold — could not place at all.
+log_veto = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False)
+for _ in range(200):   # far past saturation; the ceiling must still hold
+    log_veto.write(json.dumps({"ts": now_ts, "ids": ["hot"]}) + "\n")
+log_veto.flush()
+results_veto = [
+    {"id": "cold", "text": "cold much stronger", "score": 0.72, "metadata": {}},
+    {"id": "hot",  "text": "hot much weaker",    "score": 0.66, "metadata": {}},
+]
+out_veto = run2(results_veto, usage=log_veto.name)
+assert out_veto.index("cold much stronger") < out_veto.index("hot much weaker"), \
+    f"usage history overturned a clearly better match: {out_veto!r}"
+log_veto.close()
+os.unlink(log_veto.name)
 
 # Test 2b: slug-based join — usage log keyed by SLUG (not numeric chunk id)
 # leann returns numeric id="99" but file_name="hot-entry.md" → slug "hot-entry".
 # The usage log must be keyed by slug for the boost to work after a leann rebuild.
 log2 = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False)
-for _ in range(5):
+for _ in range(10):
     log2.write(json.dumps({"ts": now_ts, "ids": ["hot-entry"]}) + "\n")
 log2.flush()
+# Scores a hair apart, so the join is what decides the order rather than the gap.
 results_slug = [
-    {"id": "77", "text": "cold stronger slug test", "score": 0.72, "metadata": {"file_name": "cold-entry.md"}},
-    {"id": "99", "text": "hot weaker slug test",    "score": 0.66, "metadata": {"file_name": "hot-entry.md"}},
+    {"id": "77", "text": "cold stronger slug test", "score": 0.71, "metadata": {"file_name": "cold-entry.md"}},
+    {"id": "99", "text": "hot weaker slug test",    "score": 0.70, "metadata": {"file_name": "hot-entry.md"}},
 ]
 out_slug = run2(results_slug, usage=log2.name)
 assert out_slug.index("hot weaker slug test") < out_slug.index("cold stronger slug test"), \
     f"slug-based join did not apply boost (usage log keyed by slug, id=99, slug='hot-entry'): {out_slug!r}"
 log2.close()
 os.unlink(log2.name)
+
+# --- status: superseded — retire a memory without deleting it ---
+# Deleting loses the reasoning that made the entry worth writing, and a fact that
+# turned out wrong is itself worth keeping. But it must stop reaching prompts: a
+# confidently stated stale fact is worse than no memory at all.
+sup_dir = tempfile.mkdtemp()
+with open(os.path.join(sup_dir, "retired-fact.md"), "w") as fh:
+    fh.write("---\nname: retired-fact\nstatus: superseded\n---\nthe old engine returned dot products\n")
+with open(os.path.join(sup_dir, "live-fact.md"), "w") as fh:
+    fh.write("---\nname: live-fact\n---\nthe current engine returns cosine\n")
+
+out_sup = run2(
+    [
+        {"id": "1", "text": "retired body text", "score": 0.95,
+         "metadata": {"file_name": "retired-fact.md"}},
+        {"id": "2", "text": "live body text", "score": 0.55,
+         "metadata": {"file_name": "live-fact.md"}},
+    ],
+    "--mem-dir", sup_dir,
+)
+assert "retired body text" not in out_sup, \
+    f"a superseded entry was injected: {out_sup!r}"
+assert "live body text" in out_sup, \
+    f"superseding one entry suppressed the others: {out_sup!r}"
+
+# ...and it must not slip through when it is the ONLY match. A rank penalty
+# would let it win a quiet query by default; dropping it means the hook injects
+# nothing, which is the correct answer.
+out_only = run2(
+    [{"id": "1", "text": "retired body text", "score": 0.99,
+      "metadata": {"file_name": "retired-fact.md"}}],
+    "--mem-dir", sup_dir,
+)
+assert "retired body text" not in out_only, \
+    f"a superseded entry was injected as the sole match: {out_only!r}"
+
+# A missing status line must not be read as superseded.
+out_live = run2(
+    [{"id": "2", "text": "live body text", "score": 0.9,
+      "metadata": {"file_name": "live-fact.md"}}],
+    "--mem-dir", sup_dir,
+)
+assert "live body text" in out_live, \
+    f"an entry with no status was dropped: {out_live!r}"
+
+shutil.rmtree(sup_dir, ignore_errors=True)
 
 # Test 3: malformed usage log -> no crash, Phase-1 behavior
 bad = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False)
