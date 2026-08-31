@@ -39,10 +39,21 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 
 # ---- resolve slim toggle via the backend adapter ----
 DIR_MB=$(CDPATH= cd "$(dirname "$0")" && pwd)
+# MEMBACKEND_LIB_DIR: this script lives in hooks/, not hooks/lib/, so
+# memory-backend.sh's own $0-based colocation lookup (documented in its header)
+# resolves to hooks/ and finds no membackend-<name>.sh — every dispatch,
+# health included, then returns 3 "no backend". That silently pinned this gate
+# to eager-load forever. Same seam userpromptsubmit-memory-recall.sh uses.
+MEMBACKEND_LIB_DIR="${MEMBACKEND_LIB_DIR:-$DIR_MB/lib}"
 . "$DIR_MB/lib/memory-backend.sh"
 _slim=0
 _mb_name=$(membackend_name)
-if [ "$_mb_name" != "none" ] && membackend_health >/dev/null 2>&1; then
+# Health is asked PER TIER, not globally: with one index per corpus, "is the
+# backend up" has no single answer. A repo whose index was never built is
+# unhealthy for that repo and irrelevant to this gate, which decides only
+# whether the GLOBAL corpus can be recalled on demand instead of eager-loaded.
+# Passing the corpus name keeps that question answerable once other tiers exist.
+if [ "$_mb_name" != "none" ] && membackend_health "$GLOBAL_MEM_INDEX" >/dev/null 2>&1; then
   _slim=1
 fi
 
@@ -140,11 +151,20 @@ if [ -n "$OUT" ]; then
   }'
 fi
 
-# keep the recall index fresh (processless; rebuilds only if stale)
+# Keep every root's index fresh (processless; each rebuilds only if stale, and
+# the machine-wide build cap in memory-index-freshness.sh stops several tiers
+# from embedding at once). Roots come from memory-roots.sh so this cannot fall
+# out of step with what the recall hook searches — a tier refreshed under one
+# name and searched under another is a silent miss, not an error.
 DIR_SS=$(CDPATH= cd "$(dirname "$0")" && pwd)
-sh "$DIR_SS/memory-index-freshness.sh" "$GLOBAL_MEM_INDEX" "$GLOBAL_MEM_DIR" >/dev/null 2>&1 &
-if [ -d "$MEM_BASE/.claude/memory" ]; then
-  sh "$DIR_SS/memory-index-freshness.sh" "$(basename "$MEM_BASE")-memory" "$MEM_BASE/.claude/memory" >/dev/null 2>&1 &
+if [ -f "$DIR_SS/lib/memory-roots.sh" ]; then
+  . "$DIR_SS/lib/memory-roots.sh"
+  while IFS="	" read -r _fi _fd; do
+    [ -n "$_fi" ] || continue
+    sh "$DIR_SS/memory-index-freshness.sh" "$_fi" "$_fd" >/dev/null 2>&1 &
+  done <<EOF
+$(memroots_emit "$CWD")
+EOF
 fi
 
 exit 0

@@ -45,8 +45,14 @@ setup() {
   leaking=""
   for t in hooks/*.test.sh hooks/lib/*.test.sh scripts/tests/*.bats bin/*.test.sh; do
     [ -f "$t" ] || continue
-    grep -qE 'sessionstart-load-memory|stop-memory-index-rebuild|memory-index-freshness|memory-index-build' "$t" || continue
-    grep -v '^[[:space:]]*#' "$t" | grep -q 'MEMORY_BUILD_CMD=' || leaking="$leaking $t"
+    # Comments are stripped BEFORE the trigger grep, not just before the
+    # MEMORY_BUILD_CMD grep. A test that only names a hook in a comment cannot
+    # invoke it, so matching on the mention reported files that run no build at
+    # all — and the fix for a false positive here is to add a MEMORY_BUILD_CMD
+    # the test never uses, which is how a guard stops meaning anything.
+    code=$(grep -v '^[[:space:]]*#' "$t")
+    printf '%s\n' "$code" | grep -qE 'sessionstart-load-memory|stop-memory-index-rebuild|memory-index-freshness|memory-index-build' || continue
+    printf '%s\n' "$code" | grep -q 'MEMORY_BUILD_CMD=' || leaking="$leaking $t"
   done
   [ -z "$leaking" ] || { echo "test files can rebuild the real index:$leaking"; false; }
 }

@@ -24,7 +24,13 @@ cd "$REPO"
 # root precisely to prove each check still fires. Without this the gate fails
 # on its own fixtures. Anything else in the tree is fair game.
 SELF_RE='^scripts/(check-no-identity\.sh|tests/check-no-identity\.bats):'
-scan() { git ls-files -z | xargs -0 grep -nEIH "$1" 2>/dev/null | grep -vE "$SELF_RE" || true; }
+# --others --exclude-standard is load-bearing, not tidiness. A file that has
+# been copied in but not yet `git add`ed is untracked, so a bare `git ls-files`
+# does not list it — and this gate reads clean over exactly the files most
+# likely to still carry someone's machine in them, because they are the newest.
+# .gitignore is still honoured, so build artefacts and local state stay out.
+files() { git ls-files -z --cached --others --exclude-standard; }
+scan() { files | xargs -0 grep -nEIH "$1" 2>/dev/null | grep -vE "$SELF_RE" || true; }
 
 fail=0
 report() { # <label> <hits>
@@ -83,12 +89,12 @@ report "personal home directories — use a dotfile, a placeholder, or ask; do n
 #    ~/.claude-work, claude-work-memory-global, the cl-w alias) — NOT the
 #    substring "work" alone, which also appears in legitimate words this repo
 #    uses: workflow, workspace, worktree, network, framework, workaround.
-concept_hits=$(git ls-files -z \
+concept_hits=$(files \
   | xargs -0 grep -nEIHi 'claude[_-]work|\bcl-w\b' 2>/dev/null \
   | grep -vE "$SELF_RE" || true)
 
 if [ -n "$concept_hits" ]; then
-  echo "work/personal split leak — these tracked files encode a second work config root:" >&2
+  echo "work/personal split leak — these files encode a second work config root:" >&2
   printf '%s\n' "$concept_hits" >&2
   fail=1
 else
