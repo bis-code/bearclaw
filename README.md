@@ -56,9 +56,9 @@ CLAUDE.md           # user-scope context, loaded every session
 settings.json       # 10 configured plugins (8 enabled by default), 19 wired hooks, effortLevel, autoCompactWindow
 statusline.sh       # status line (model · cwd · branch · token meters)
 rules/              # canonical rules — behavioral instructions, loaded every session
-skills/             # 17 skills (handoff, handoff-autonomously, goal-prompt, memory-capture, walkthrough, ...)
+skills/             # 16 skills (handoff, handoff-autonomously, goal-prompt, walkthrough, ...)
 agents/             # 16 named subagents (reviewers, implementers, planners)
-hooks/              # 20 hook scripts (see "Hooks" below) + hooks/lib/ (memory subsystem)
+hooks/              # 18 hook scripts (see "Hooks" below) + hooks/lib/ (memory subsystem)
 memory-global/      # global memory tier: MEMORY.md index + ERRORS.md + one fact per file
 bin/                # operational scripts (claude-setup-doctor, cost report, review markers, ...)
 commands/           # slash commands (/cost-report)
@@ -85,11 +85,11 @@ Each language reviewer detects the project's stack (e.g. `java` → Spring vs
 Quarkus vs Vert.x) and applies general-language rules always, stack-specific
 checks only when it detects that stack.
 
-### Skills (`skills/`, 17)
+### Skills (`skills/`, 16)
 
 `address-review-comments`, `agent-self-evaluation`, `context-budget`,
 `contract-audit`, `editing-pr-descriptions`, `find-skills`, `goal-prompt`,
-`handoff`, `handoff-autonomously`, `memory-capture`, `monthly-setup-audit`,
+`handoff`, `handoff-autonomously`, `monthly-setup-audit`,
 `roadmap`, `swift-actor-persistence`, `swift-concurrency-6-2`,
 `swift-protocol-di-testing`, `visual-companion`, `walkthrough`.
 
@@ -97,15 +97,17 @@ checks only when it detects that stack.
 one AskUserQuestion card per item, a decision log + tracker sync at the end,
 and a queue-instead-of-stall mode under an active `/goal`.
 
-`handoff` and `memory-capture` are the core session-continuity pair;
-`monthly-setup-audit` is a read-only health check of this setup itself.
-`handoff-autonomously` = `handoff` + a `/goal` line (built by `goal-prompt`,
-which embeds the official `/goal` docs — models don't know the command
-natively) so the next session after `/clear` can run unattended.
+`handoff` is the core session-continuity skill (writing a durable lesson
+directly into repo-local `.claude/memory/` is a manual step described there —
+no capture skill or auto-trigger does it for you); `monthly-setup-audit` is a
+read-only health check of this setup itself. `handoff-autonomously` = `handoff`
++ a `/goal` line (built by `goal-prompt`, which embeds the official `/goal`
+docs — models don't know the command natively) so the next session after
+`/clear` can run unattended.
 
-### Hooks (`hooks/`, 20 scripts)
+### Hooks (`hooks/`, 18 scripts)
 
-19 are wired into `settings.json` as lifecycle hooks; `memory-index-freshness.sh`
+17 are wired into `settings.json` as lifecycle hooks; `memory-index-freshness.sh`
 is a shared library called by `install.sh` and `stop-memory-index-rebuild.sh`
 rather than registered directly.
 
@@ -121,15 +123,12 @@ rather than registered directly.
 | `PreToolUse` (`Skill`) | `pretooluse-verification-pair.sh` | Enforces that a verification skill runs before a "finish the branch" skill. |
 | `UserPromptSubmit` | `userpromptsubmit-deepthink-nudge.sh` | Nudges toward the deep-think plugin's think tool when the prompt matches an architecture/design trigger. Fires at most once per session. |
 | `UserPromptSubmit` | `userpromptsubmit-memory-recall.sh` | Injects relevant memory entries into context, gated by relevance. |
-| `SessionEnd` | `sessionend-memory-capture.sh` | Writes a raw capture pointer (not distilled memory) so the next session's `memory-capture` skill can review it. No LLM call here. |
 | `Notification` | `notify-attention.sh` | Desktop notification, fired only when Claude genuinely needs you, labeled by notification type. |
 | `Stop` | `stop-handoff-reminder.sh` | Warns via `systemMessage` once the transcript passes a configurable % of `autoCompactWindow`, so you can run `/handoff` before auto-compact strips context. |
 | `Stop` | `stop-askquestion-nudge.sh` | Blocks once per session when a turn ends with a 2-4 way choice written as prose instead of the `AskUserQuestion` tool. |
 | `Stop` | `cost-tracker.sh` | Appends a per-turn delta cost row to a local metrics file (non-blocking background write). Backs `/cost-report`. |
 | `Stop` | `stop-memory-index-rebuild.sh` | Rebuilds the semantic memory index if a memory file changed since the last build (mtime-gated, cheap when nothing changed). |
-| `Stop` | `stop-memory-signal.sh` | Heuristic (no LLM) high-signal-turn detector feeding the memory-capture skill's prioritization. |
 | `PreCompact` | `precompact-snapshot.sh` | Writes a git-shaped snapshot (branch, SHA, status, last commits) to `~/.claude/handoffs/` right before compaction discards the conversation. |
-| `PreCompact` | `sessionend-memory-capture.sh` | Same raw-capture pointer as the `SessionEnd` case, so compaction doesn't lose it either. |
 | `PostCompact` | `postcompact-resume.sh` | After an **auto**-compact only, injects an instruction to resume the in-flight task from the precompact snapshot. |
 
 ## Permissions

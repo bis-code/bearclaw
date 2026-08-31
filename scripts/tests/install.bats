@@ -43,14 +43,53 @@ teardown() { rm -rf "$DEST"; }
   [ -z "$output" ]
 }
 
-@test "install then uninstall leaves DEST empty of our symlinks" {
-  MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX=test-memory-global \
-    XDG_STATE_HOME="$BATS_TEST_TMPDIR/state" \
-    "$REPO/install.sh" "$DEST"
-  [ -L "$DEST/settings.json" ]
-  MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX=test-memory-global \
-    XDG_STATE_HOME="$BATS_TEST_TMPDIR/state" \
-    "$REPO/install.sh" --uninstall "$DEST"
-  [ ! -L "$DEST/settings.json" ]
-  [ ! -L "$DEST/agents" ]
+# Copy-on-install: fresh install into an empty DEST produces real files/dirs,
+# never symlinks — Claude Code atomic-writes settings.json on /config etc.,
+# which used to replace a symlink with a real file and drop repo-only keys.
+# INSTALL_TEST_STOP_AFTER_COPY=1 stops right after the copy + .installed-from
+# write, before install.sh's machine-wide side effects (plugin install,
+# memory-index build) that a test must never trigger.
+@test "install copies real files and dirs, not symlinks" {
+  INSTALL_TEST_STOP_AFTER_COPY=1 "$REPO/install.sh" "$DEST"
+  for entry in CLAUDE.md .mcp.json settings.json statusline.sh; do
+    [ -f "$DEST/$entry" ] && [ ! -L "$DEST/$entry" ]
+  done
+  for entry in rules skills hooks agents bin memory-global; do
+    [ -d "$DEST/$entry" ] && [ ! -L "$DEST/$entry" ]
+  done
+  # spot-check actual content landed, not just empty dirs
+  [ -f "$DEST/hooks/sessionstart-heal-settings.sh" ]
+  # no top-level symlink anywhere under DEST pointing back at the repo
+  run find "$DEST" -maxdepth 1 -type l
+  [ -z "$output" ]
+}
+
+@test "install records .installed-from with repo= and sha=" {
+  INSTALL_TEST_STOP_AFTER_COPY=1 "$REPO/install.sh" "$DEST"
+  [ -f "$DEST/.installed-from" ]
+  REPO_LINE=$(sed -n 's/^repo=//p' "$DEST/.installed-from")
+  SHA_LINE=$(sed -n 's/^sha=//p' "$DEST/.installed-from")
+  # -e, not -d: a git worktree's .git is a plain file, not a directory.
+  [ -n "$REPO_LINE" ] && [ -e "$REPO_LINE/.git" ]
+  [ "$SHA_LINE" = "$(git -C "$REPO" rev-parse HEAD)" ]
+}
+
+# Reviewer-flagged guard bypass: dirname("/")+basename("/") used to join into
+# the literal "///", which the "/" case pattern did not match.
+@test "DEST=/ is refused before anything is touched" {
+  run "$REPO/install.sh" /
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"refusing to install"* ]]
+}
+
+@test "DEST=\$HOME is refused too (same guard, the other named case)" {
+  run "$REPO/install.sh" "$HOME"
+  [ "$status" -ne 0 ]
+}
+
+@test "re-running into the same DEST is idempotent" {
+  INSTALL_TEST_STOP_AFTER_COPY=1 "$REPO/install.sh" "$DEST"
+  run env INSTALL_TEST_STOP_AFTER_COPY=1 "$REPO/install.sh" "$DEST"
+  [ "$status" -eq 0 ]
+  [ -f "$DEST/CLAUDE.md" ] && [ ! -L "$DEST/CLAUDE.md" ]
 }

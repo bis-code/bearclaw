@@ -15,8 +15,8 @@ CLAUDE.md carries the one-line verify-before-citing reminder globally. -->
 (committed, every session via hook, cross-cutting facts) · `<repo>/.claude/memory/`
 (repo-local; committed in private personal repos, gitignored in public/work
 repos). Native `~/.claude/projects/<cwd>/memory/` is a machine-local **inbox**
-that memory-capture drains — never a peer store. Legacy entries there migrate
-lazily when touched.
+you drain by hand (see `handoff`'s "Optional: Capture memory" step) — never a
+peer store. Legacy entries there migrate lazily when touched.
 
 **Classify:** global if true *regardless of repo* (CLI behavior, conventions,
 reusable fixes); repo-local if it only means something for that project.
