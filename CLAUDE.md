@@ -13,8 +13,11 @@ Identity section for your own accounts/paths. -->
 
 ## Code Search
 
-Use `Grep`/`Glob` — live filesystem, always current. For broad multi-location
-sweeps where you only need the conclusion, dispatch the `Explore` agent.
+Structural questions (what connects X to Y, who calls/uses Z, module shape)
+→ graphify's `query_graph`/`shortest_path`/`get_node` when the MCP tools are
+available (see `.mcp.json` — the rebuild is opt-in, never automatic). Literal
+text/symbol lookup → `Grep`/`Glob` (live filesystem, always current). Broad
+multi-location sweeps needing only a conclusion → dispatch the `Explore` agent.
 
 ## Friction-loop awareness
 
@@ -88,7 +91,7 @@ plan → native plan mode / `Plan` · TDD → `superpowers:test-driven-developme
 ## Skills
 
 User-maintained: `editing-pr-descriptions`, `handoff` (+ autonomous mode as
-`/handoff-autonomously`), `goal-prompt`, `walkthrough`, `memory-capture`,
+`/handoff-autonomously`), `goal-prompt`, `walkthrough`,
 `monthly-setup-audit` (includes the context-budget lane), `contract-audit`,
 `roadmap`, `address-review-comments`.
 

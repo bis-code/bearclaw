@@ -203,18 +203,6 @@
         ]
       }
     ],
-    "SessionEnd": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/sessionend-memory-capture.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
     "Notification": [
       {
         "matcher": "*",
@@ -250,11 +238,6 @@
           },
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/stop-memory-signal.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
             "command": "SETTINGS_HEAL_SILENT=1 $HOME/.claude/hooks/sessionstart-heal-settings.sh",
             "timeout": 5
           }
@@ -270,11 +253,6 @@
             "command": "$HOME/.claude/hooks/precompact-snapshot.sh",
             "timeout": 10,
             "statusMessage": "Capturing pre-compact snapshot..."
-          },
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/sessionend-memory-capture.sh",
-            "timeout": 10
           }
         ]
       }
@@ -321,11 +299,6 @@
           },
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/stop-memory-signal.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
             "command": "SETTINGS_HEAL_SILENT=1 $HOME/.claude/hooks/sessionstart-heal-settings.sh",
             "timeout": 5
           }
@@ -353,5 +326,5 @@
   "verbose": true,
   "autoCompactEnabled": true,
   "teammateMode": "auto",
-  "memorySlimLoad": true
+  "memoryBackend": "none"
 }

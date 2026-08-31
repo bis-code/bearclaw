@@ -64,49 +64,9 @@ out=$(runcwd sE "$PROJ" "$TMP_REAL")
 printf '%s' "$out" | grep -q 'update your GitHub issues' \
   && ok "t8 personal repo gets issues reminder" || bad "t8" "$out"
 
-# ── Memory-capture auto-trigger tests ────────────────────────────────────────
-# Uses MEMORY_STORE_DIR seam. Signal file at $STORE/_pending/signals/<sid>.jsonl.
-MEM_STORE="$TMP/mem-store"
-mkdir -p "$MEM_STORE/_pending/signals"
-
-run_cap() {
-    # run_cap <session-id> <signal-file-content-or-empty>
-    sid="$1"; sig="$2"
-    if [ -n "$sig" ]; then
-        printf '%s\n' "$sig" > "$MEM_STORE/_pending/signals/${sid}.jsonl"
-    else
-        rm -f "$MEM_STORE/_pending/signals/${sid}.jsonl"
-    fi
-    printf '{"transcript_path":"%s","session_id":"%s"}' "$T" "$sid" | \
-      CLAUDE_HANDOFF_STATE_DIR="$TMP" CLAUDE_CONTEXT_WINDOW=1000 \
-      CLAUDE_HANDOFF_START_PCT=60 CLAUDE_HANDOFF_BAND_PCT=10 \
-      MEMORY_STORE_DIR="$MEM_STORE" sh "$HOOK"
-}
-
-# t10: PCT>=60 + non-empty signal file + no marker -> decision:block, mentions capture
-mkusage 400 250 > "$T"   # 65%
-out=$(run_cap sCAP '{"signal":"test"}')
-printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 \
-    && ok "t10 capture block fires" || bad "t10 block" "$out"
-printf '%s' "$out" | jq -r '.reason' 2>/dev/null | grep -qi 'capture' \
-    && ok "t10 reason mentions capture" || bad "t10 reason" "$out"
-[ -f "$TMP/capture-triggered-sCAP" ] \
-    && ok "t10 marker written" || bad "t10 marker" "file not found"
-
-# t11: second run same session (marker present) -> NO block, falls through to systemMessage
-out=$(run_cap sCAP '{"signal":"test"}')
-printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 \
-    && bad "t11 marker-gate" "still blocking on second run" || ok "t11 marker prevents second block"
-printf '%s' "$out" | jq -e '.systemMessage' >/dev/null 2>&1 \
-    && ok "t11 falls through to handoff systemMessage" || bad "t11 fallthrough" "$out"
-
-# t12: PCT>=60 + NO signal file -> no capture block, existing handoff systemMessage emitted
-out=$(run_cap sQUIET '')
-printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 \
-    && bad "t12 quiet" "capture fired with no signal file" || ok "t12 quiet session no capture"
-printf '%s' "$out" | jq -e '.systemMessage' >/dev/null 2>&1 \
-    && ok "t12 quiet session still gets handoff reminder" || bad "t12 handoff" "$out"
-# ─────────────────────────────────────────────────────────────────────────────
+# t10–t12 (memory-capture auto-trigger) removed (T9): the block depended on
+# stop-memory-signal.sh's signal file, retired along with the review-queue
+# machinery. See hooks/stop-handoff-reminder.sh.
 
 # t13 (Q9 2026-08-17): band RESETS when context drops below the threshold —
 # a /compact shrinks context; without the reset the pre-compact high band

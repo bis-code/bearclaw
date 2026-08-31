@@ -80,26 +80,10 @@ fi
 BAND=$(( (PCT - START_PCT) / BAND_PCT ))
 mkdir -p "$STATE_DIR" 2>/dev/null
 
-# --- Context-gated memory-capture auto-trigger (once per session) -----------
-# Before the compaction boundary, if this session accumulated high-signal
-# markers, DIRECT Claude to run the interactive capture flow exactly once.
-# Gated on its OWN marker (separate from the handoff band state) so it fires
-# once and never every turn; gated on signal-markers existing so quiet/trivial
-# sessions are never interrupted (this also keeps the handoff test green —
-# those cases have no signal file).
-CAP_STORE="${MEMORY_STORE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/claude-memory}"
-CAP_SIGNALS="$CAP_STORE/_pending/signals/${SESSION_ID}.jsonl"
-CAP_MARK="$STATE_DIR/capture-triggered-${STATE_KEY}"
-# Marker-write is a PRECONDITION of blocking: if the state dir is unwritable,
-# the `( : > … )` fails, the && short-circuits, and we fall through to the
-# normal handoff path — never blocking without the once-guard in place (a
-# repeating block would otherwise fire every turn on a broken filesystem).
-if [ ! -f "$CAP_MARK" ] && [ -s "$CAP_SIGNALS" ] && ( : > "$CAP_MARK" ) 2>/dev/null; then
-    CAP_REASON="Context at ${PCT}% — run your once-per-session memory capture NOW, before the compaction boundary. Invoke the memory-capture skill (interactive path): distill this session's high-signal turns (markers in $CAP_SIGNALS) into candidate lessons, dedup each via hooks/lib/memory-dedup.sh, then AskUserQuestion keep/edit/drop and write ONLY accepted entries to .claude/memory/. Nothing is banked without an explicit accept. This auto-capture fires once per session."
-    jq -n --arg r "$CAP_REASON" '{decision:"block", reason:$r}'
-    exit 0
-fi
-# ---------------------------------------------------------------------------
+# Context-gated memory-capture auto-trigger removed (T9): it blocked on a
+# signal file written by stop-memory-signal.sh and directed Claude to the
+# memory-capture skill's interactive path, both retired along with the
+# review-queue machinery.
 
 LAST_BAND=-1
 [ -f "$STATE_FILE" ] && LAST_BAND=$(cat "$STATE_FILE" 2>/dev/null) && [ -z "$LAST_BAND" ] && LAST_BAND=-1

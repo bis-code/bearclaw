@@ -4,7 +4,10 @@
 # LINKED worktree's cwd too. GLOBAL_MEM_DIR seam points at an empty temp dir so
 # the real global memory doesn't bleed into assertions.
 #
-# Also covers Phase 1.5: memorySlimLoad toggle via MEMORY_SLIM_LOAD env.
+# Also covers T9: the backend-aware slim-load gate (replaces the old
+# leann-index-existence check). MEMORY_BACKEND is the seam (same contract as
+# every other hooks/lib/memory-backend.sh caller): "none" -> eager load,
+# anything else -> slim load.
 HOOK="$(dirname "$0")/sessionstart-load-memory.sh"
 TMP=$(mktemp -d)
 EMPTY="$TMP/empty-global"; mkdir -p "$EMPTY"
@@ -26,16 +29,13 @@ bad(){ echo "FAIL $1 ($2)"; fail=1; }
 # shells out to the real `leann build claude-memory-global` against whatever
 # GLOBAL_MEM_DIR fixture is active. EVERY invocation of $HOOK below MUST route
 # through this prefix (via `env $SAFE ...`) so no test can rebuild the real
-# semantic-memory index or write real freshness stamps.
-SAFE="MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX=test-memory-global XDG_STATE_HOME=$STATE_DIR LEANN_INDEX_HOME=$TMP/leann-idx"
-# The D2 slim fallback checks the index dir exists — create it so slim-mode
-# tests exercise slim behavior, not the fallback (T20/T21 cover the fallback).
-mkdir -p "$TMP/leann-idx/test-memory-global"
+# semantic-memory index or write real freshness stamps. MEMORY_BACKEND=none
+# pins the slim/eager toggle deterministically (independent of whatever the
+# real machine's settings.json memoryBackend is set to).
+SAFE="MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX=test-memory-global XDG_STATE_HOME=$STATE_DIR MEMORY_BACKEND=none"
 
 # additionalContext for a given cwd, with global memory isolated to an empty dir
-# Existing full-load assertions pin the toggle OFF (env seam) so they're
-# deterministic regardless of the persistent memorySlimLoad setting (now true).
-run(){ printf '{"cwd":"%s"}\n' "$1" | env $SAFE GLOBAL_MEM_DIR="$EMPTY" MEMORY_SLIM_LOAD=0 sh "$HOOK" 2>/dev/null \
+run(){ printf '{"cwd":"%s"}\n' "$1" | env $SAFE GLOBAL_MEM_DIR="$EMPTY" sh "$HOOK" 2>/dev/null \
        | jq -r '.hookSpecificOutput.additionalContext // ""'; }
 
 # Main repo with repo-local memory carrying a canary token
@@ -57,7 +57,7 @@ run "$WT" | grep -q "WORKTREE-CANARY-TOKEN" \
 
 # T3: cwd = non-git dir, no memory -> no repo-local section, exit 0
 NONGIT="$TMP/nongit"; mkdir -p "$NONGIT"
-printf '{"cwd":"%s"}\n' "$NONGIT" | env $SAFE GLOBAL_MEM_DIR="$EMPTY" MEMORY_SLIM_LOAD=0 sh "$HOOK" >/dev/null 2>&1; rc=$?
+printf '{"cwd":"%s"}\n' "$NONGIT" | env $SAFE GLOBAL_MEM_DIR="$EMPTY" sh "$HOOK" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 0 ] && ok "t3 non-git exits 0" || bad "t3 rc" "$rc"
 run "$NONGIT" | grep -q "Repo-local memory" \
   && bad "t3" "unexpected repo-local section" || ok "t3 non-git: no repo-local section"
@@ -66,32 +66,12 @@ run "$NONGIT" | grep -q "Repo-local memory" \
 # personal-project roadmaps moved to GitHub Issues (rules/solo-project-roadmap.md).
 # The hook no longer emits a "Roadmap present" section.
 
-# ---- review-queue nudge (Task 4) ----------------------------------------
-# Point at a fresh store dir so no real state bleeds in.
-STORE_DIR="$TMP/store"
-export MEMORY_STORE_DIR="$STORE_DIR"
+# T8–T10 (memory review queue nudge) removed 2026-08-30 (T9): the SessionEnd/
+# PreCompact raw-capture backstop and the memory-capture skill's deferred-drain
+# path were retired along with leann's slim-gate dependency. The hook no
+# longer sources memory-store.sh or emits a "Memory review queue" section.
 
-# run_store: like run() but also carries MEMORY_STORE_DIR
-run_store(){ printf '{"cwd":"%s"}\n' "$MAIN" \
-  | env $SAFE GLOBAL_MEM_DIR="$EMPTY" MEMORY_STORE_DIR="$STORE_DIR" sh "$HOOK" 2>/dev/null \
-  | jq -r '.hookSpecificOutput.additionalContext // ""'; }
-
-# T8: empty queue -> no nudge
-run_store | grep -q "Memory review queue" \
-  && bad "t8" "nudge shown with empty queue" || ok "t8 empty queue: no nudge"
-
-# T9 & T10: with pending raw captures -> nudge appears with count
-DIR_HOOK=$(CDPATH= cd "$(dirname "$0")" && pwd)
-. "$DIR_HOOK/lib/memory-store.sh"; memstore_init
-memstore_enqueue_raw '{"session":"a"}' >/dev/null
-memstore_enqueue_raw '{"session":"b"}' >/dev/null
-out_q=$(run_store)
-printf '%s' "$out_q" | grep -q "Memory review queue" \
-  && ok "t9 nudge appears with pending queue" || bad "t9" "nudge missing with pending queue"
-printf '%s' "$out_q" | grep -q "2" \
-  && ok "t10 pending count surfaced" || bad "t10" "pending count not in nudge"
-
-# ---- Phase 1.5: memorySlimLoad toggle (MEMORY_SLIM_LOAD env seam) ----------
+# ---- T9: backend-aware slim toggle (MEMORY_BACKEND env seam) --------------
 # Set up a global dir with both MEMORY.md and ERRORS.md containing canaries.
 SLIM_GLOBAL="$TMP/slim-global"; mkdir -p "$SLIM_GLOBAL"
 printf '# Global memory index\n- [foo](foo.md) — GLOBAL-MEM-CANARY\n' > "$SLIM_GLOBAL/MEMORY.md"
@@ -99,78 +79,66 @@ printf '## [2026-01-01] err one — fix one\n- **Trigger:** err-trigger-one\n- *
 
 # repo for slim tests (reuse MAIN which has repo-local memory)
 
-# run_slim: run hook with slim=ON and the populated global dir
+# run_slim: run hook with a configured (non-none) backend -> slim path
 run_slim(){ printf '{"cwd":"%s"}\n' "$MAIN" \
-  | env $SAFE GLOBAL_MEM_DIR="$SLIM_GLOBAL" MEMORY_SLIM_LOAD=1 MEMORY_STORE_DIR="$STORE_DIR" \
+  | env MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX=test-memory-global XDG_STATE_HOME="$STATE_DIR" \
+    MEMORY_BACKEND=cognee GLOBAL_MEM_DIR="$SLIM_GLOBAL" \
     sh "$HOOK" 2>/dev/null \
   | jq -r '.hookSpecificOutput.additionalContext // ""'; }
 
-# run_full: same global dir but slim=OFF — confirms eager content present
+# run_full: same global dir but backend=none -> confirms eager content present
 run_full(){ printf '{"cwd":"%s"}\n' "$MAIN" \
-  | env $SAFE GLOBAL_MEM_DIR="$SLIM_GLOBAL" MEMORY_SLIM_LOAD=0 MEMORY_STORE_DIR="$STORE_DIR" \
+  | env $SAFE GLOBAL_MEM_DIR="$SLIM_GLOBAL" \
     sh "$HOOK" 2>/dev/null \
   | jq -r '.hookSpecificOutput.additionalContext // ""'; }
 
 slim_out=$(run_slim)
 full_out=$(run_full)
 
-# T11 (slim OFF): global MEMORY.md content appears
+# T11 (backend=none): global MEMORY.md content appears
 printf '%s' "$full_out" | grep -q "GLOBAL-MEM-CANARY" \
-  && ok "t11 slim-off: global MEMORY.md appears" \
-  || bad "t11" "global MEMORY.md missing when slim=0"
+  && ok "t11 backend=none: global MEMORY.md appears (eager)" \
+  || bad "t11" "global MEMORY.md missing when backend=none"
 
-# T12 (slim OFF): global ERRORS content appears
+# T12 (backend=none): global ERRORS content appears
 printf '%s' "$full_out" | grep -q "err-trigger-one" \
-  && ok "t12 slim-off: global ERRORS content appears" \
-  || bad "t12" "global ERRORS missing when slim=0"
+  && ok "t12 backend=none: global ERRORS content appears (eager)" \
+  || bad "t12" "global ERRORS missing when backend=none"
 
-# T13 (slim OFF): repo-local MEMORY.md content appears
+# T13 (backend=none): repo-local MEMORY.md content appears
 printf '%s' "$full_out" | grep -q "WORKTREE-CANARY-TOKEN" \
-  && ok "t13 slim-off: repo-local MEMORY.md appears" \
-  || bad "t13" "repo-local MEMORY.md missing when slim=0"
+  && ok "t13 backend=none: repo-local MEMORY.md appears (eager)" \
+  || bad "t13" "repo-local MEMORY.md missing when backend=none"
 
-# T14 (slim ON): global MEMORY.md eager dump is ABSENT
+# T14 (backend=cognee): global MEMORY.md eager dump is ABSENT
 printf '%s' "$slim_out" | grep -q "GLOBAL-MEM-CANARY" \
-  && bad "t14" "global MEMORY.md appeared in slim mode" \
-  || ok "t14 slim-on: global MEMORY.md eager dump absent"
+  && bad "t14" "global MEMORY.md appeared with backend=cognee" \
+  || ok "t14 backend=cognee: global MEMORY.md eager dump absent (slim)"
 
-# T15 (slim ON): global ERRORS eager dump is ABSENT
+# T15 (backend=cognee): global ERRORS eager dump is ABSENT
 printf '%s' "$slim_out" | grep -q "err-trigger-one" \
-  && bad "t15" "global ERRORS appeared in slim mode" \
-  || ok "t15 slim-on: global ERRORS eager dump absent"
+  && bad "t15" "global ERRORS appeared with backend=cognee" \
+  || ok "t15 backend=cognee: global ERRORS eager dump absent (slim)"
 
-# T16 (slim ON): repo-local MEMORY.md eager dump is ABSENT
+# T16 (backend=cognee): repo-local MEMORY.md eager dump is ABSENT
 printf '%s' "$slim_out" | grep -q "WORKTREE-CANARY-TOKEN" \
-  && bad "t16" "repo-local MEMORY.md appeared in slim mode" \
-  || ok "t16 slim-on: repo-local MEMORY.md eager dump absent"
+  && bad "t16" "repo-local MEMORY.md appeared with backend=cognee" \
+  || ok "t16 backend=cognee: repo-local MEMORY.md eager dump absent (slim)"
 
-# T17 (slim ON): recall-served pointer line IS present
+# T17 (backend=cognee): recall-served pointer line IS present
 printf '%s' "$slim_out" | grep -q "recall-served" \
-  && ok "t17 slim-on: recall-served pointer present" \
-  || bad "t17" "recall-served pointer missing in slim mode"
+  && ok "t17 backend=cognee: recall-served pointer present (slim)" \
+  || bad "t17" "recall-served pointer missing with backend=cognee"
 
-# T19 (slim ON): capture nudge still appears when queue non-empty
-# (STORE_DIR already has 2 items from T9/T10 above)
-printf '%s' "$slim_out" | grep -q "Memory review queue" \
-  && ok "t19 slim-on: capture nudge still present" \
-  || bad "t19" "capture nudge missing in slim mode"
-
-# ---- D2 slim fallback: slim requested but index MISSING -> eager + notice ----
-run_slim_noidx(){ printf '{"cwd":"%s"}\n' "$MAIN" \
-  | env $SAFE GLOBAL_MEM_DIR="$SLIM_GLOBAL" MEMORY_SLIM_LOAD=1 MEMORY_STORE_DIR="$STORE_DIR" \
-    LEANN_INDEX_HOME="$TMP/leann-idx-absent" sh "$HOOK" 2>/dev/null \
-  | jq -r '.hookSpecificOutput.additionalContext // ""'; }
-noidx_out=$(run_slim_noidx)
-
-# T20: eager global content IS present despite slim=1 (fallback engaged)
-printf '%s' "$noidx_out" | grep -q "GLOBAL-MEM-CANARY" \
-  && ok "t20 slim+no-index: falls back to eager load" \
-  || bad "t20" "eager content missing — fallback did not engage"
-
-# T21: the fallback notice line is present
-printf '%s' "$noidx_out" | grep -q "recall index missing" \
-  && ok "t21 slim+no-index: notice line present" \
-  || bad "t21" "fallback notice missing"
+# T18: no leann call anywhere in the hook's own EXECUTABLE source (T9
+# requirement — the backend-aware gate must not invoke leann directly; recall
+# stays delegated to the adapter / recall hook). Comments are allowed to say
+# the word (they document what was removed); only non-comment lines count.
+if grep -v '^[[:space:]]*#' "$HOOK" | grep -qi 'leann'; then
+  bad "t18" "sessionstart-load-memory.sh still invokes leann"
+else
+  ok "t18 no leann invocation in sessionstart-load-memory.sh"
+fi
 
 echo
 [ "$fail" -eq 0 ] && echo "ALL PASS" || echo "SOME FAILED"

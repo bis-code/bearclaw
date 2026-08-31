@@ -1,17 +1,30 @@
 #!/usr/bin/env bash
 # claude-setup-doctor — verify the live install matches the repo.
 #
-# Checks symlink integrity, hook permissions, JSON validity, MCP availability,
-# settings cascade, marketplace reachability. Reports PASS/WARN/FAIL per check;
-# exits non-zero only on FAIL.
+# Checks install-copy integrity (install.sh copies, not symlinks), hook
+# permissions, JSON validity, MCP availability, settings cascade, marketplace
+# reachability. Reports PASS/WARN/FAIL per check; exits non-zero only on FAIL.
 
 set -uo pipefail
 
-# Resolve real script location even when invoked via a symlinked parent dir
-# (e.g. ~/.claude/bin is a symlink to repo/bin — `pwd` returns the logical
-# path, so use `cd -P` / `pwd -P` to get the physical repo root).
-REPO="$(cd -P "$(dirname "$0")/.." && pwd -P)"
 DEST="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
+# Resolve the repo. install.sh copies ~/.claude/bin rather than symlinking
+# it, so this doctor is normally run from a real copy that no longer traces
+# back to the repo by following symlinks in its own path — read install.sh's
+# own record instead (CLAUDE_SETUP_REPO test seam wins when set). Falls back
+# to the old cd -P trick for the case this is run directly from a repo
+# checkout (e.g. ./bin/claude-setup-doctor during development, where
+# .installed-from may be stale or absent).
+REPO="${CLAUDE_SETUP_REPO:-}"
+if [ -z "$REPO" ] && [ -f "$DEST/.installed-from" ]; then
+    REPO="$(sed -n 's/^repo=//p' "$DEST/.installed-from" | head -1)"
+fi
+# -e, not -d: a git WORKTREE's .git is a plain file, not a directory — -d
+# here rejects a worktree-installed repo and silently falls back to $DEST.
+if [ -z "$REPO" ] || [ ! -e "$REPO/.git" ]; then
+    REPO="$(cd -P "$(dirname "$0")/.." && pwd -P)"
+fi
 PASS=0; WARN=0; FAIL=0
 
 pass()  { printf '  \033[32mPASS\033[0m  %s\n' "$1"; PASS=$((PASS+1)); }
@@ -29,19 +42,30 @@ for t in gh curl node uv leann bats; do
     else warn "$t missing (gh=marketplace checks, node=deep-think server, uv/leann=memory recall, bats=2 test suites) — scripts/bootstrap-deps.sh installs all"; fi
 done
 
-group "1. Symlinks ($DEST → $REPO)"
+group "1. Install copy ($DEST ← $REPO)"
+if [ -f "$DEST/.installed-from" ]; then
+    INSTALLED_SHA="$(sed -n 's/^sha=//p' "$DEST/.installed-from" | head -1)"
+    HEAD_SHA="$(git -C "$REPO" rev-parse HEAD 2>/dev/null)"
+    if [ -n "$INSTALLED_SHA" ] && [ -n "$HEAD_SHA" ] && [ "$INSTALLED_SHA" = "$HEAD_SHA" ]; then
+        pass ".installed-from matches repo HEAD ($INSTALLED_SHA)"
+    elif [ -n "$INSTALLED_SHA" ] && [ -n "$HEAD_SHA" ]; then
+        warn ".installed-from sha ($INSTALLED_SHA) != repo HEAD ($HEAD_SHA) — run install.sh"
+    else
+        warn ".installed-from present but unreadable/repo HEAD unresolvable"
+    fi
+else
+    fail "$DEST/.installed-from missing — run install.sh"
+fi
 for entry in CLAUDE.md .mcp.json settings.json statusline.sh rules skills hooks agents; do
     dst="$DEST/$entry"; src="$REPO/$entry"
     if [ ! -e "$src" ]; then
         warn "$entry not in repo (skipping)"
         continue
     fi
-    if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then
-        pass "$entry → repo"
-    elif [ -L "$dst" ]; then
-        fail "$entry symlink points elsewhere: $(readlink "$dst")"
+    if [ -L "$dst" ]; then
+        fail "$entry is a symlink (stale — pre-copy install left this) — run install.sh"
     elif [ -e "$dst" ]; then
-        fail "$entry exists as real file (should be symlink) — run install.sh"
+        pass "$entry present (copy)"
     else
         fail "$entry missing in $DEST — run install.sh"
     fi

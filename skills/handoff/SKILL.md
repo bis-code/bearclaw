@@ -160,17 +160,18 @@ Ask the user before running this. Never auto-comment on a repo the user does not
 ## Optional: Capture memory
 
 If the session produced durable lessons (a failure→fix, a convention, a decision
-the next session shouldn't relearn), invoke the **memory-capture** skill
-(interactive path) NOW while the session is fresh: it distills candidates, dedups
-each against the leann index, and asks keep/edit/drop per candidate. Accepted
-entries land in repo-local `.claude/memory/` — nothing is written without your
-accept, and nothing is committed.
+the next session shouldn't relearn), write it directly into repo-local
+`.claude/memory/` NOW while the session is fresh: one fact per file (frontmatter
+`name:`/`description:`), plus an index line in `.claude/memory/MEMORY.md`. Check
+existing entries for a near-duplicate first (grep, or `hooks/lib/memory-dedup.sh`
+if a semantic backend is configured) — update the existing entry instead of
+adding a second one on the same lesson. Nothing is committed automatically.
 
 Skip this for sessions that produced no reusable lesson (the common case).
 
 ## What This Skill Does NOT Do
 
-- **No silent memory writes.** Memory capture is a separate, opt-in step via the memory-capture skill, always behind an accept gate.
+- **No silent memory writes.** Memory capture is a separate, opt-in step you do explicitly, never automatic.
 - **No commits, no pushes.** The user commits. The handoff describes uncommitted state truthfully.
 - **No Obsidian mirroring.** A separate hook handles that.
 - **No tool-usage stats, token counts, or session metrics.** Noise.

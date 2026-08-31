@@ -1,9 +1,10 @@
 #!/usr/bin/env bats
 # Tests for the SessionStart memory loader. Points the hook at fixtures via env.
 # ALL of these seams must be pinned or the suite reads/writes real machine state:
-#   MEMORY_SLIM_LOAD  — unpinned, the hook falls through to ~/.claude/settings.json
-#                        and takes the slim path, which never reads MEMORY.md/ERRORS.md.
-#   MEMORY_STORE_DIR  — unpinned, the review-queue count reads the real capture queue.
+#   MEMORY_BACKEND    — unpinned, the hook falls through to the real
+#                        ~/.claude/settings.json memoryBackend key. "none" pins
+#                        the eager path; any other value pins the slim path
+#                        (T9: backend-aware gate via hooks/lib/memory-backend.sh).
 #   MEMORY_BUILD_CMD  — the hook backgrounds memory-index-freshness.sh at the end,
 #                        which (unpinned) shells out to the real `leann build`.
 #   GLOBAL_MEM_INDEX  — defence in depth: even if a build ran, it must never be able
@@ -16,22 +17,15 @@
 #                        writing — see git history for the race this caused) and
 #                        not in the user's real ~/.local/state/claude-memory.
 
-#   LEANN_INDEX_HOME  — the D2 slim fallback checks the recall index exists
-#                        before honoring slim mode; point it at a fixture dir
-#                        containing test-memory-global so slim tests exercise
-#                        slim behavior (not the eager fallback).
-
 HOOK() { printf '%s' "$1" | GLOBAL_MEM_DIR="$GMD" ERRORS_TAIL="${ETAIL:-5}" \
-  MEMORY_SLIM_LOAD="${SLIM:-0}" MEMORY_STORE_DIR="$STORE" \
+  MEMORY_BACKEND="${BACKEND:-none}" \
   MEMORY_BUILD_CMD=true GLOBAL_MEM_INDEX="test-memory-global" XDG_STATE_HOME="$BATS_FILE_TMPDIR/state" \
-  LEANN_INDEX_HOME="$FIX/leann-idx" \
+  MEMORY_LOAD_MAX_CHARS="${MAXCHARS:-8000}" \
   sh "$BATS_TEST_DIRNAME/../../hooks/sessionstart-load-memory.sh"; }
 
 setup() {
   FIX="$(mktemp -d "${TMPDIR:-/tmp}/ssm.XXXXXX")"
   GMD="$FIX/global"; mkdir -p "$GMD"
-  STORE="$FIX/store"; mkdir -p "$STORE/_pending/raw"
-  mkdir -p "$FIX/leann-idx/test-memory-global"
 }
 teardown() { rm -rf "$FIX"; }
 
@@ -70,17 +64,40 @@ teardown() { rm -rf "$FIX"; }
   [ -z "$output" ]
 }
 
-@test "slim mode emits the recall-served banner and skips eager dumps" {
+@test "a configured (non-none) backend emits the recall-served banner and skips eager dumps" {
   printf -- '- [Thing](thing.md) — a hook\n' > "$GMD/MEMORY.md"
-  SLIM=1 run HOOK '{"cwd":"/tmp"}'
+  BACKEND=cognee run HOOK '{"cwd":"/tmp"}'
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("recall-served")'
   ! ( echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Thing")' )
 }
 
-@test "review queue is surfaced when raw captures are pending" {
-  : > "$STORE/_pending/raw/abc123.json"
-  run HOOK '{"cwd":"/tmp"}'
+@test "backend=none loads eagerly (default degrade for bearclaw / unconfigured machines)" {
+  printf -- '- [Thing](thing.md) — a hook\n' > "$GMD/MEMORY.md"
+  BACKEND=none run HOOK '{"cwd":"/tmp"}'
   [ "$status" -eq 0 ]
-  echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Memory review queue")'
+  echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Thing")'
+  ! ( echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("recall-served")' )
+}
+
+@test "output under MEMORY_LOAD_MAX_CHARS is not truncated" {
+  printf -- '- [Thing](thing.md) — a hook\n' > "$GMD/MEMORY.md"
+  MAXCHARS=8000 run HOOK '{"cwd":"/tmp"}'
+  [ "$status" -eq 0 ]
+  ! ( echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Memory truncated")' )
+}
+
+@test "output over MEMORY_LOAD_MAX_CHARS is truncated at a line boundary with a notice" {
+  awk 'BEGIN { for (i = 1; i <= 300; i++) print "- [Item" i "](item" i ".md) — a fact about item " i }' > "$GMD/MEMORY.md"
+  MAXCHARS=500 run HOOK '{"cwd":"/tmp"}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Memory truncated at 500 chars")'
+  # never keeps a later, unreachable item — proves the cut, not just the notice
+  ! ( echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Item300")' )
+  # notice sits at the very end and the line before it is a complete, unbroken line
+  echo "$output" | jq -r '.hookSpecificOutput.additionalContext' > "$FIX/ctx.txt"
+  tail -1 "$FIX/ctx.txt" | grep -q "^## Memory truncated at 500 chars"
+  kept_last=$(grep -c '^- \[Item' "$FIX/ctx.txt")
+  [ "$kept_last" -gt 0 ]
+  grep '^- \[Item' "$FIX/ctx.txt" | tail -1 | grep -qE '^- \[Item[0-9]+\]\(item[0-9]+\.md\) — a fact about item [0-9]+$'
 }

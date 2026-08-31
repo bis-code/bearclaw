@@ -7,11 +7,18 @@ set -u
 DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
 
-# Resolve the repo from the live install, never a hardcoded clone path — the
-# checkout lives somewhere different on every machine.
-CM="$(readlink -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" 2>/dev/null)"
-REPO="$(dirname "$CM")"
-[ -n "$REPO" ] && [ -d "$REPO/.git" ] || { echo "FAIL cannot resolve repo from ~/.claude/CLAUDE.md symlink — is claude-setup installed?"; exit 1; }
+# Resolve the repo, never a hardcoded clone path — the checkout lives
+# somewhere different on every machine. install.sh copies rather than
+# symlinks, so ~/.claude/CLAUDE.md no longer resolves back to it — read the
+# record install.sh leaves instead. CLAUDE_SETUP_REPO (test seam) wins when set.
+ROOT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+REPO="${CLAUDE_SETUP_REPO:-}"
+if [ -z "$REPO" ] && [ -f "$ROOT/.installed-from" ]; then
+  REPO="$(sed -n 's/^repo=//p' "$ROOT/.installed-from" | head -1)"
+fi
+# -e, not -d: a git WORKTREE's .git is a plain file (pointer to the main
+# checkout), not a directory — -d would silently reject a worktree-installed repo.
+[ -n "$REPO" ] && [ -e "$REPO/.git" ] || { echo "FAIL cannot resolve repo from $ROOT/.installed-from — is claude-setup installed?"; exit 1; }
 cd "$REPO" || exit 1
 echo "repo: $REPO"
 

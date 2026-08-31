@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Symlinks this repo into ~/.claude/. Editing ~/.claude/X = editing repo X.
+# Copies this repo into ~/.claude/ (copy-on-install, not symlinks — Claude
+# Code atomic-writes settings.json on /config etc., which replaced an old
+# symlink with a real file and dropped repo-only keys). ~/.claude/.installed-from
+# records which repo + commit produced the copy, for tools that need to find
+# the repo (the drift/staleness hooks) now that readlink can't.
 # Idempotent: safe to re-run after `git pull`. Backs up real files once.
 #
 # Usage:
 #   ./install.sh [DEST]              install (DEST defaults to ~/.claude)
 #   ./install.sh --dry-run [DEST]    print what would happen, change nothing
-#   ./install.sh --uninstall [DEST]  remove only the symlinks this script made
 #
 # This script touches ONLY $DEST and $XDG_STATE_HOME/claude-memory. It never
 # modifies your global git config, your ~/.gitconfig, or your shell rc files.
 
-DRY=0; MODE=install
+DRY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run)   DRY=1; shift ;;
-    --uninstall) MODE=uninstall; shift ;;
     -h|--help)   sed -n '3,12p' "$0"; exit 0 ;;
     *)           break ;;
   esac
@@ -23,6 +25,27 @@ done
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="${1:-$HOME/.claude}"
+
+# Safety guard for the directory copy_dir() below (which does an rm -rf of a
+# known $DEST subpath before repopulating it): refuse outright if DEST itself
+# resolves to something a wrong argument or a broken env could turn into "/",
+# "$HOME", or empty — copy_dir would otherwise be one bad $rel away from
+# wiping the wrong tree.
+case "$DEST" in
+  "") echo "ERROR: DEST resolved empty — refusing to install" >&2; exit 1 ;;
+esac
+DEST_REAL="$(CDPATH= cd -P "$(dirname "$DEST")" 2>/dev/null && pwd)/$(basename "$DEST")" || DEST_REAL="$DEST"
+# Squeeze duplicate slashes and drop a trailing slash before comparing: with
+# DEST="/", dirname and basename both return "/", so the naive join above
+# produces the literal string "///" — which the "/" pattern below would NOT
+# match without this normalization.
+DEST_REAL="$(printf '%s' "$DEST_REAL" | sed -e 's#/\{2,\}#/#g' -e 's#\(.\)/$#\1#')"
+case "$DEST_REAL" in
+  "/"|"$HOME")
+    echo "ERROR: refusing to install into $DEST (resolves to $DEST_REAL)" >&2
+    exit 1 ;;
+esac
+
 BACKUP="$DEST/backups/pre-install-$(date +%Y%m%d-%H%M%S)"
 
 FILES=(CLAUDE.md .mcp.json settings.json statusline.sh)
@@ -73,37 +96,118 @@ preflight() {
 }
 run() { [ "$DRY" -eq 1 ] && { say "would: $*"; return 0; }; "$@"; }
 
-link() {
-  local rel="$1" src="$REPO/$1" dst="$DEST/$1"
+# Files: cp, backing up whatever was at $dst (real file OR a leftover symlink
+# from an old link-based install) the first time it differs from the repo.
+copy_file() {
+  local rel="$1"
+  local src="$REPO/$rel"
+  local dst="$DEST/$rel"
+
   [ -e "$src" ] || { say "skip $rel (not in repo)"; return; }
-  if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then say "ok   $rel"; return; fi
-  if [ -e "$dst" ] || [ -L "$dst" ]; then run mkdir -p "$BACKUP"; run mv "$dst" "$BACKUP/"; fi
-  run mkdir -p "$(dirname "$dst")"
-  run ln -s "$src" "$dst"
-  say "link $rel"
-}
 
-unlink_ours() {
-  local rel="$1" dst="$DEST/$1"
-  if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$REPO/$1" ]; then
-    run rm "$dst"; say "unlink $rel"
-  else
-    say "skip $rel (not our symlink)"
+  if [ -f "$dst" ] && [ ! -L "$dst" ] && cmp -s "$src" "$dst" 2>/dev/null; then
+    say "ok   $rel"
+    return
   fi
+
+  if [ -e "$dst" ] || [ -L "$dst" ]; then
+    run mkdir -p "$BACKUP"
+    run mv "$dst" "$BACKUP/"
+  fi
+
+  run mkdir -p "$(dirname "$dst")"
+  run cp "$src" "$dst"
+  say "copy $rel"
 }
 
-if [ "$MODE" = uninstall ]; then
-  for f in "${FILES[@]}"; do unlink_ours "$f"; done
-  for d in "${DIRS[@]}";  do unlink_ours "$d"; done
-  say "done. your memory under $DEST and ~/.local/state/claude-memory was NOT removed."
-  exit 0
-fi
+# Directories: copy contents (rsync -a --delete when available; cp -R after an
+# rm -rf of $dst otherwise). $dst is always "$DEST/$rel" for one of the fixed
+# names in DIRS above — never a wildcard — so the rm -rf can only ever remove
+# a known entry under DEST, never DEST itself or anything above it.
+copy_dir() {
+  local rel="$1"
+  local src="$REPO/$rel"
+  local dst="$DEST/$rel"
+
+  [ -e "$src" ] || { say "skip $rel (not in repo)"; return; }
+  [ -n "$rel" ] || { echo "REFUSE copy_dir with empty rel" >&2; return 1; }
+  case "$dst" in
+    "$DEST"/*) : ;;
+    *) echo "REFUSE copy_dir dst outside DEST: $dst" >&2; return 1 ;;
+  esac
+
+  if [ -L "$dst" ]; then
+    run mkdir -p "$BACKUP"
+    run mv "$dst" "$BACKUP/"
+  fi
+
+  run mkdir -p "$dst"
+  # memory-global and skills legitimately accumulate content that never lived
+  # in the repo: a memory promotion can land a freshly-promoted entry straight
+  # into $DEST/memory-global before it's committed, and skills is where a
+  # third-party installer (a plugin marketplace) writes from now on — that not
+  # landing inside the tracked repo is the point of copy-on-install. --delete
+  # would erase both on the very next install.sh run, so neither directory
+  # prunes; only rules/hooks/agents/bin/commands mirror the repo exactly (a
+  # file removed from the repo disappears from DEST too).
+  case "$rel" in
+    memory-global|skills)
+      if command -v rsync >/dev/null 2>&1; then
+        run rsync -a "$src/" "$dst/"
+      else
+        run cp -R "$src/." "$dst/"
+      fi
+      ;;
+    rules)
+      # rules/about-me.local.md is gitignored and DEST-only (seeded once,
+      # below, and then hand-edited) — exclude it from the prune so a plain
+      # --delete sync doesn't wipe it on every re-run.
+      if command -v rsync >/dev/null 2>&1; then
+        run rsync -a --delete --exclude=about-me.local.md "$src/" "$dst/"
+      else
+        # No rsync: skip the delete pass rather than risk rm -rf clobbering
+        # about-me.local.md too — an overlay copy still keeps DEST current,
+        # just without pruning files the repo has since removed.
+        run cp -R "$src/." "$dst/"
+      fi
+      ;;
+    *)
+      if command -v rsync >/dev/null 2>&1; then
+        run rsync -a --delete "$src/" "$dst/"
+      else
+        run rm -rf "$dst"
+        run mkdir -p "$dst"
+        run cp -R "$src/." "$dst/"
+      fi
+      ;;
+  esac
+  say "copy $rel"
+}
 
 preflight
 
 run mkdir -p "$DEST"
-for f in "${FILES[@]}"; do link "$f"; done
-for d in "${DIRS[@]}";  do link "$d"; done
+for f in "${FILES[@]}"; do copy_file "$f"; done
+# Whole-dir copies — anything dropped into rules/skills/hooks/agents/bin/commands
+# lands on the next install.sh run (not live-immediately, unlike symlinks).
+for d in "${DIRS[@]}";  do copy_dir "$d"; done
+
+# Record what produced this copy — the drift/staleness hooks and a memory
+# promotion need to find the repo now that readlink on ~/.claude/* can't.
+INSTALL_SHA="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
+if [ "$DRY" -eq 1 ]; then
+  say "would: write $DEST/.installed-from (repo=$REPO sha=$INSTALL_SHA)"
+else
+  printf 'repo=%s\nsha=%s\n' "$REPO" "$INSTALL_SHA" > "$DEST/.installed-from"
+fi
+say "ok   .installed-from (sha=$INSTALL_SHA)"
+
+# Test seam: everything from here down is machine-wide side effects (plugin
+# install, memory-index build) that a test must not trigger against the real
+# machine. INSTALL_TEST_STOP_AFTER_COPY=1 stops right after the part under
+# test — the copy + .installed-from — leaving install.sh itself as the thing
+# exercised, not a reimplementation of it.
+[ "${INSTALL_TEST_STOP_AFTER_COPY:-0}" = "1" ] && exit 0
 
 # Executable bits (chmod follows symlinks, so target the repo directly).
 # *.test.sh files are invoked via `sh <file>` (scripts/test-all.sh), never
@@ -116,6 +220,19 @@ if [ "$DRY" -eq 0 ]; then
     chmod +x "$f" 2>/dev/null || true
   done
   for f in "$REPO"/bin/*; do
+    case "$f" in *.test.sh) continue ;; esac
+    chmod +x "$f" 2>/dev/null || true
+  done
+  # ...and on the just-copied DEST tree — a real copy no longer inherits
+  # chmod changes to the repo automatically the way a symlink did, so this
+  # has to be asserted on both sides. rsync/cp preserve the source's mode
+  # bits, but this makes it deterministic regardless of which copy path ran.
+  chmod +x "$DEST/statusline.sh" 2>/dev/null || true
+  for f in "$DEST"/hooks/*.sh "$DEST"/hooks/lib/*.sh "$DEST"/scripts/*.sh; do
+    case "$f" in *.test.sh) continue ;; esac
+    chmod +x "$f" 2>/dev/null || true
+  done
+  for f in "$DEST"/bin/*; do
     case "$f" in *.test.sh) continue ;; esac
     chmod +x "$f" 2>/dev/null || true
   done
@@ -135,8 +252,8 @@ else
 fi
 
 # Machine-local seeds — created only if absent, never overwritten.
-if [ ! -e "$REPO/rules/about-me.local.md" ] && [ -f "$REPO/rules/about-me.example.md" ]; then
-  run cp "$REPO/rules/about-me.example.md" "$REPO/rules/about-me.local.md"
+if [ ! -e "$DEST/rules/about-me.local.md" ] && [ -f "$REPO/rules/about-me.example.md" ]; then
+  run cp "$REPO/rules/about-me.example.md" "$DEST/rules/about-me.local.md"
   say "seed rules/about-me.local.md (gitignored — edit it)"
 fi
 

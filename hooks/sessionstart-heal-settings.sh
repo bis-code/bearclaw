@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# SessionStart self-heal for settings.json (§6.5 durable-symlink fix).
+# SessionStart self-heal for settings.json (revised for copy-on-install).
 #
-# Claude Code atomic-writes the active config root's settings.json (temp+rename)
-# on /config, /effort, and plugin changes. The rename replaces the repo SYMLINK
-# with a REAL FILE and drops repo-only keys (effortLevel observed lost). This
-# hook runs at session start, detects the clobber, MERGES the live file's keys
-# back into the repo's canonical settings.json (no loss), and re-asserts the
-# symlink. Idempotent — a no-op when the symlink is already intact.
+# Before copy-on-install, ~/.claude/settings.json was a symlink to the repo's
+# canonical copy, so a Claude Code atomic-write (temp+rename) on /config,
+# /effort, or a plugin change replaced the symlink with a real file and
+# dropped repo-only keys. Now that install.sh COPIES settings.json instead of
+# symlinking it, LIVE and CANON are always two independent real files — there
+# is no symlink to clobber, and nothing this hook does can lose a key by
+# having the CLI write through it.
 #
-# settings.json is shared across config roots via symlink (work -> ~/.claude ->
-# repo); .mcp.json and auth are per-root and are NEVER touched here.
+# The hook's job is simpler as a result: live differs from repo canonical on
+# an ALLOWLISTED key -> merge live's value into the repo canonical, so the
+# next commit captures it. Any other top-level key that differs (permissions,
+# env, hooks, or anything not on the allowlist) is left alone and logged as
+# skipped — never merged. This is a deliberate allowlist, not a denylist: a
+# denylist only catches keys someone already thought to name.
 #
 # Env seams (for tests):
 #   CLAUDE_SETUP_REPO  (default: resolved from this hook's own location)
@@ -21,15 +26,13 @@ CANON="$REPO/settings.json"
 ROOT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 LIVE="$ROOT/settings.json"
 
-# The hook is registered on SessionStart AND on Stop. Stop's stdout contract is
-# not SessionStart's, so the Stop registration sets SETTINGS_HEAL_SILENT=1 and
-# every repair runs without emitting anything.
+# The hook is registered on SessionStart AND on Stop/StopFailure/ConfigChange.
+# Stop's stdout contract is not SessionStart's, so the non-SessionStart
+# registrations set SETTINGS_HEAL_SILENT=1 and every repair runs without
+# emitting anything.
 say() { [ -n "${SETTINGS_HEAL_SILENT:-}" ] && return 0; printf "$@"; }
 
-# Minimal audit trail. A clobber that recurs costs disproportionate forensics
-# because nothing records whether this guard ran or what it decided: transcripts
-# carry a stop-hook summary but no SessionStart record, and three of the paths
-# below return silently. One line per non-trivial outcome only — the quiet pass
+# Minimal audit trail. One line per non-trivial outcome only — the quiet pass
 # stays silent, so this file grows slowly.
 heal_log() {
   _d="${XDG_STATE_HOME:-$HOME/.local/state}/claude-memory"
@@ -38,84 +41,58 @@ heal_log() {
   return 0
 }
 
-# Nothing to heal against if the canonical file is gone.
+# Nothing to merge if either side is missing, or without jq (never risk a
+# blind overwrite).
 [ -f "$CANON" ] || exit 0
+[ -f "$LIVE" ] || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
+jq empty "$CANON" >/dev/null 2>&1 || exit 0
+jq empty "$LIVE" >/dev/null 2>&1 || exit 0
 
-# Sticky-key guard. A session that started BEFORE a heal holds pre-heal
-# settings in memory; when it later saves any config change, Claude Code
-# writes that stale state THROUGH the restored symlink, silently deleting
-# repo-only keys from the canon (effortLevel lost this way 2026-08-05 — the
-# merge below never sees it because the symlink is intact). Repair: any
-# sticky key absent from canon but present in git HEAD's settings.json is
-# restored from HEAD. Only ABSENCE triggers — a changed value, or a removal
-# that was actually committed, is respected.
-sticky_check() {
-  command -v jq >/dev/null 2>&1 || return 0
+# Keys the CLI legitimately owns and that are safe to fold back into the repo
+# canonical file. Everything else — most importantly permissions (any
+# subkey), env, and hooks — is NEVER merged, regardless of what shows up here.
+ALLOW="enabledPlugins extraKnownMarketplaces theme model effortLevel statusLine editorMode autoCompactEnabled autoCompactWindow voiceEnabled preferredNotifChannel"
 
-  # Local-only pre-check FIRST. One jq per sticky key against a local file
-  # decides whether anything needs healing; only then do we pay for git. This
-  # is what lets the hook run on Stop (every turn) as well as SessionStart —
-  # an unconditional `git show HEAD:settings.json` per turn was the cost that
-  # made per-turn healing unattractive.
-  missing=""
-  for k in ${SETTINGS_STICKY_KEYS:-effortLevel}; do
-    [ "$(jq -r --arg k "$k" 'has($k)' "$CANON" 2>/dev/null)" = "false" ] || continue
-    missing="$missing $k"
+is_allowed() {
+  _k="$1"
+  for _a in $ALLOW; do
+    [ "$_k" = "$_a" ] && return 0
   done
-  [ -n "$missing" ] || return 0
-
-  command -v git >/dev/null 2>&1 || { heal_log "sticky-abort missing:$missing reason:no-git"; return 0; }
-  git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1 || { heal_log "sticky-abort missing:$missing reason:not-a-repo repo:$REPO"; return 0; }
-  head_json=$(git -C "$REPO" show HEAD:settings.json 2>/dev/null)
-  [ -n "$head_json" ] || { heal_log "sticky-abort missing:$missing reason:no-head-settings"; return 0; }
-  restored=""
-  for k in $missing; do
-    [ "$(printf '%s' "$head_json" | jq -r --arg k "$k" 'has($k)' 2>/dev/null)" = "true" ] || continue
-    v=$(printf '%s' "$head_json" | jq -c --arg k "$k" '.[$k]')
-    t2="$(mktemp)"
-    if jq --arg k "$k" --argjson v "$v" '.[$k]=$v' "$CANON" >"$t2" 2>/dev/null && [ -s "$t2" ] && jq empty "$t2" 2>/dev/null; then
-      cp "$t2" "$CANON"
-      restored="$restored $k"
-    fi
-    rm -f "$t2"
-  done
-  if [ -n "$restored" ]; then
-    heal_log "sticky-restore$restored"
-    say '{"systemMessage":"settings.json self-heal: restored sticky key(s)%s (dropped by a stale write-through; values from git HEAD). Review/commit repo settings.json."}\n' "$restored"
-  else
-    heal_log "sticky-noop missing:$missing (present in canon? no; restorable from HEAD? no)"
-  fi
-  return 0
+  return 1
 }
 
-# Fast path: a symlink that still resolves is fine (covers the work -> personal
-# -> repo chain). Only a real-file clobber or a broken symlink needs healing —
-# but the sticky-key guard runs even here, since write-through losses leave
-# the symlink intact.
-if [ -L "$LIVE" ] && [ -e "$LIVE" ]; then
-  sticky_check
-  exit 0
-fi
+tmp="$(mktemp)"
+cp "$CANON" "$tmp"
 
-resymlink() { rm -f "$LIVE"; ln -s "$CANON" "$LIVE"; }
+changed=""
+skipped=""
+for k in $(jq -r 'keys[]' "$LIVE" 2>/dev/null); do
+  live_val="$(jq -c --arg k "$k" '.[$k]' "$LIVE" 2>/dev/null)"
+  canon_val="$(jq -c --arg k "$k" '.[$k] // null' "$CANON" 2>/dev/null)"
+  [ "$live_val" = "$canon_val" ] && continue
 
-if [ -f "$LIVE" ] && [ ! -L "$LIVE" ]; then
-  # Real-file clobber. Merge so nothing is lost:
-  #   jq '.[0] * .[1]'  → canonical keys preserved, LIVE values win on overlap,
-  #   LIVE-only (new /config) keys added. Restores effortLevel (repo-only,
-  #   dropped by the clobber) while keeping the user's latest /config change.
-  command -v jq >/dev/null 2>&1 || exit 0   # never risk a blind overwrite
-  tmp="$(mktemp)"
-  if jq -s '.[0] * .[1]' "$CANON" "$LIVE" >"$tmp" 2>/dev/null && [ -s "$tmp" ] && jq empty "$tmp" 2>/dev/null; then
-    cp "$tmp" "$CANON"
-    resymlink
-    say '{"systemMessage":"settings.json self-heal: re-symlinked %s -> repo and merged live keys back (no loss). Review/commit repo settings.json."}\n' "$LIVE"
+  if is_allowed "$k"; then
+    tmp2="$(mktemp)"
+    if jq --arg k "$k" --argjson v "$live_val" '.[$k]=$v' "$tmp" >"$tmp2" 2>/dev/null \
+       && [ -s "$tmp2" ] && jq empty "$tmp2" 2>/dev/null; then
+      mv "$tmp2" "$tmp"
+      changed="$changed $k"
+    else
+      rm -f "$tmp2"
+    fi
+  else
+    skipped="$skipped $k"
   fi
-  rm -f "$tmp"
-  sticky_check
-elif [ ! -e "$LIVE" ]; then
-  # Broken or missing symlink — nothing to preserve, just re-assert it.
-  resymlink
-  say '{"systemMessage":"settings.json self-heal: re-symlinked %s -> repo."}\n' "$LIVE"
+done
+
+if [ -n "$changed" ]; then
+  cp "$tmp" "$CANON"
+  heal_log "merged$changed (from $LIVE)"
+  say '{"systemMessage":"settings.json self-heal: merged live key(s)%s from %s into repo canonical (allowlisted only). Review/commit repo settings.json."}\n' "$changed" "$LIVE"
 fi
+if [ -n "$skipped" ]; then
+  heal_log "skipped$skipped (not in merge allowlist: permissions/env/hooks or unlisted)"
+fi
+rm -f "$tmp"
 exit 0
