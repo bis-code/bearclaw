@@ -249,11 +249,33 @@ elif command -v claude >/dev/null 2>&1; then
   # sprint-retrospective) come from borghei's pm-skills plugin rather than
   # copies in skills/: the plugin keeps its license (MIT + Commons Clause) and
   # tracks upstream, where a vendored copy drops the LICENSE and goes stale.
-  # Cost: the bundle is 66 skills, roughly 4k tokens of descriptions per
-  # session. The marketplace name is the manifest's "name", not the repo.
+  # Cost: the bundle advertises 66 skills but the loader registers only its
+  # 15 top-level dirs, roughly 1k tokens of descriptions per session. The
+  # marketplace name is the manifest's "name", not the repo.
   claude plugin marketplace add borghei/Claude-Skills >/dev/null 2>&1 || true
   claude plugin install pm-skills@claude-code-skills >/dev/null 2>&1 || true
   say "ok   pm-skills plugin (sprint ceremonies; marketplace + install)"
+  # The skill loader registers only TOP-LEVEL skill dirs, and pm-skills keeps
+  # three of the four ceremonies one level down under execution/ — so as
+  # installed only sprint-retrospective resolves. Link the three up into
+  # skills/. The cache path carries the plugin version, so re-run install.sh
+  # after a plugin update; the doctor's ceremony group tells you when a link
+  # has gone stale. Plain sort, not sort -V: BSD sort on macOS lacks it, and
+  # one cached version is the norm.
+  PMSKILLS="$(ls -d "$DEST"/plugins/cache/claude-code-skills/pm-skills/*/ 2>/dev/null | sort | tail -1)"
+  if [ -n "$PMSKILLS" ]; then
+    PMSKILLS="${PMSKILLS%/}"
+    for s in sprint-plan backlog-refinement story-splitting; do
+      if [ -f "$PMSKILLS/execution/$s/SKILL.md" ]; then
+        run ln -sfn "$PMSKILLS/execution/$s" "$DEST/skills/$s"
+      else
+        say "WARN pm-skills: execution/$s not in the cache — upstream layout changed?"
+      fi
+    done
+    say "ok   pm-skills nested ceremonies linked into skills/ (sprint-plan, backlog-refinement, story-splitting)"
+  else
+    say "WARN pm-skills cache not found under $DEST/plugins/cache — nested ceremony skills not linked"
+  fi
 else
   say "skip deep-think plugin install (claude CLI not on PATH)"
 fi

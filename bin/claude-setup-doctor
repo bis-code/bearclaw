@@ -279,5 +279,30 @@ else
     info "bearclaw: ~$DRIFT_N portable files differ from the public twin (excludes public-only + never-cross paths) — reconcile via docs/bearclaw-sync.md"
 fi
 
+group "13. Sprint ceremonies (pm-skills plugin)"
+# The loader registers only top-level skill dirs; pm-skills nests three of the
+# four ceremonies under execution/, so install.sh links them up into skills/.
+# A missing or dangling link here means the plugin was updated (the cache path
+# carries the version) and install.sh has not been re-run since — and until it
+# is, /sprint-plan and friends silently do not exist in any new session.
+PMSK="$(ls -d "$DEST"/plugins/cache/claude-code-skills/pm-skills/*/ 2>/dev/null | sort | tail -1)"
+if [ -z "$PMSK" ]; then
+    warn "pm-skills plugin not in the cache — run install.sh (installs pm-skills@claude-code-skills)"
+else
+    PMSK="${PMSK%/}"
+    if [ -f "$PMSK/sprint-retrospective/SKILL.md" ]; then
+        pass "sprint-retrospective: top-level in pm-skills $(basename "$PMSK")"
+    else
+        fail "sprint-retrospective missing from the pm-skills cache — upstream layout changed?"
+    fi
+    for s in sprint-plan backlog-refinement story-splitting; do
+        if [ -f "$DEST/skills/$s/SKILL.md" ]; then
+            pass "$s: linked from pm-skills execution/ ($(readlink "$DEST/skills/$s" 2>/dev/null | sed "s#^$DEST/##"))"
+        else
+            fail "$s does not resolve — nested under pm-skills execution/ and not linked into skills/ — run install.sh"
+        fi
+    done
+fi
+
 printf '\n\033[1mSummary:\033[0m \033[32m%d pass\033[0m, \033[33m%d warn\033[0m, \033[31m%d fail\033[0m\n' "$PASS" "$WARN" "$FAIL"
 exit "$FAIL"
