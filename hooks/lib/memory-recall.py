@@ -160,6 +160,16 @@ def main():
             return base * mult * _usage_boost(_slug(r), stats, now)
 
         kept.sort(key=effective, reverse=True)
+        # A per-file slot cap would go here, between the sort and the slice.
+        # Deliberately absent. On one live install ERRORS.md (~56% of the index
+        # by chunk count) looked like it was crowding everything else out at
+        # 84 organic recalls (32% of slots); at 948 recalls it held 17%, which
+        # for a file that size is under-represented, not crowding — the early
+        # figure was small-sample noise. Recalls where it took ALL slots stayed
+        # at the same 5 across 864 further recalls: an artifact of a then-small
+        # corpus. sessionstart-memory-tuning-nudge.sh watches the share and
+        # speaks up only if it climbs back past its bar; add a cap then, with
+        # the measurement, not before.
         kept = kept[: a.top_k]
 
         budget = a.budget_tokens

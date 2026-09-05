@@ -120,6 +120,11 @@
             "type": "command",
             "command": "$HOME/.claude/hooks/sessionstart-graphify-nudge.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/sessionstart-memory-tuning-nudge.sh",
+            "timeout": 5
           }
         ]
       }
