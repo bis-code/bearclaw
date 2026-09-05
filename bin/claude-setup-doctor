@@ -295,7 +295,7 @@ else
     else
         fail "sprint-retrospective missing from the pm-skills cache — upstream layout changed?"
     fi
-    for s in sprint-plan backlog-refinement story-splitting; do
+    for s in sprint-plan backlog-refinement story-splitting prioritization-frameworks release-notes; do
         if [ -f "$DEST/skills/$s/SKILL.md" ]; then
             pass "$s: linked from pm-skills execution/ ($(readlink "$DEST/skills/$s" 2>/dev/null | sed "s#^$DEST/##"))"
         else
