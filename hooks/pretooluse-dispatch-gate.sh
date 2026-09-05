@@ -82,7 +82,7 @@ if [ "$GP" -eq 1 ] && [ -z "$alt" ] && [ -n "$TEXT" ]; then
   elif m 'n\+1|unbounded quer|performance (review|regress)'; then match=performance-reviewer
   elif m 'architecture review|module boundar|coupling'; then match=architect-reviewer
   elif m '(golang|\bgo\b|java|python|c#|csharp|\.net|typescript|javascript|swift) (code )?review|review .*\.(go|java|py|cs|tsx?|swift)\b'; then match=language-reviewer
-  elif m 'dead code|duplicated? (logic|code)|unused (import|export)|obsolete scaffold'; then alt="the refactor-clean skill (refactor-cleaner agent retired 2026-08-16)"; altkey=refactorclean
+  elif m 'dead code|duplicated? (logic|code)|unused (import|export)|obsolete scaffold'; then alt="the simplify skill (refactor-cleaner agent retired 2026-08-16)"; altkey=refactorclean
   elif m '\btdd\b|test-?first|failing test first'; then alt="the superpowers:test-driven-development skill (tdd-guide agent retired 2026-08-16)"; altkey=tddskill
   elif m 'update (the )?(readme|changelog|openapi)|sync (the )?docs'; then alt="in-session doc edits (doc-updater agent retired 2026-08-16 — small doc syncs need no subagent)"; altkey=docsync
   elif m 'implementation plan|plan (the |a |this )(feature|implementation|change)|map (the )?affected (code|files)'; then alt="native plan mode or the Plan agent (planner agent retired 2026-08-16)"; altkey=planmode

@@ -24,7 +24,7 @@ A request to "fix X" is a license to fix X — **not** to touch adjacent code.
   leave the dead one in place.** Removing it IS part of the change, not a follow-up.
 - **Verify-then-remove**, never delete on a hunch: grep for every reference (call
   sites, XcodeGen globs, tests, `@dsCard`/wire keys) to prove it's unreferenced, then
-  remove it and let the build/tests confirm. Dispatch `refactor-cleaner` for
+  remove it and let the build/tests confirm. Use the `simplify` skill for
   non-trivial removals.
 - If reachability is uncertain, it's not dead — leave it and say why.
 - Don't accumulate `// TODO remove` / commented-out blocks / parallel old+new

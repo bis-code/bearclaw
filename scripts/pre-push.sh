@@ -40,8 +40,17 @@ if command -v shellcheck >/dev/null 2>&1; then
 fi
 
 # Full test suite — blocks the push on any failure.
+#
+# Run it with git's per-hook env stripped. git exports GIT_DIR to every hook;
+# from a normal checkout that is the relative ".git", which harmlessly resolves
+# to each test's own temp repo, but from a worktree it is ABSOLUTE and points
+# every temp repo the suite creates back at the real one. Six suites failed
+# that way on a worktree push while passing standalone, which reads as "the
+# tests are broken" rather than "the gate poisoned them" — and the fixtures
+# then committed onto the live branch and rewrote its config.
 if [ -x "$REPO/scripts/test-all.sh" ]; then
-    if ! "$REPO/scripts/test-all.sh" >&2; then
+    if ! (unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR; \
+          "$REPO/scripts/test-all.sh") >&2; then
         echo "pre-push: test suite failed" >&2
         fail=1
     fi

@@ -21,9 +21,16 @@ A three-phase, READ-ONLY audit:
 1. Resolve paths (run in Bash):
 
    ```bash
-   # Resolve the repo from the live install — clone paths differ per machine
-   # (clone paths differ per machine).
-   SETUP_REPO="$(dirname "$(readlink -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md")")"
+   # Resolve the repo from the live install — clone paths differ per machine.
+   #
+   # Read it from .installed-from, which install.sh writes for exactly this.
+   # Do NOT readlink CLAUDE.md: install.sh COPIES that file rather than
+   # symlinking it (the harness rewrites files in ~/.claude in place), so
+   # readlink -f returns the copy and SETUP_REPO lands on ~/.claude — which has
+   # no scripts/ or docs/, and every path below then fails silently.
+   CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+   SETUP_REPO="$(sed -n 's/^repo=//p' "$CLAUDE_DIR/.installed-from" 2>/dev/null | head -1)"
+   [ -d "$SETUP_REPO/scripts" ] || { echo "cannot resolve setup repo from $CLAUDE_DIR/.installed-from — run install.sh" >&2; exit 1; }
    MONTH="$(date +%Y-%m)"
    REPORT="$SETUP_REPO/docs/audits/${MONTH}-claude-setup-audit.md"
    PREV="$(ls -1 "$SETUP_REPO"/docs/audits/*-claude-setup-audit.md 2>/dev/null | grep -v "$MONTH" | tail -1)"

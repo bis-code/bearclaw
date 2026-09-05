@@ -86,7 +86,7 @@ last resort. The trigger→suggestion map lives in
 once/session) — keep the hook and this roster in sync. Retired-agent surfaces
 map to: diff review → `/code-review` · security pass → `/security-review` ·
 plan → native plan mode / `Plan` · TDD → `superpowers:test-driven-development`
-· dead-code cleanup → `refactor-clean` skill · doc sync → in-session edits.
+· dead-code cleanup → `simplify` skill · doc sync → in-session edits.
 
 ## Skills
 
