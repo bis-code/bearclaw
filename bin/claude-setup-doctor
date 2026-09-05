@@ -30,6 +30,9 @@ PASS=0; WARN=0; FAIL=0
 pass()  { printf '  \033[32mPASS\033[0m  %s\n' "$1"; PASS=$((PASS+1)); }
 warn()  { printf '  \033[33mWARN\033[0m  %s\n' "$1"; WARN=$((WARN+1)); }
 fail()  { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; FAIL=$((FAIL+1)); }
+# Reported, never graded: a measurement worth seeing that has no threshold worth
+# failing on. Does not touch the counters, so it can never turn the summary yellow.
+info()  { printf '  \033[36mINFO\033[0m  %s\n' "$1"; }
 group() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
 group "0. Required tools"
@@ -252,13 +255,28 @@ if [ -z "$BEARCLAW" ]; then
     pass "no local bearclaw clone — drift not checked on this machine"
 else
     DRIFT_OUT=$(bash "$REPO/scripts/bearclaw-drift.sh" "$BEARCLAW" 2>/dev/null)
-    DRIFT_N=$(printf '%s' "$DRIFT_OUT" | grep -cE '^\s+[a-zA-Z0-9._/-]+' 2>/dev/null)
-    DRIFT_MAX="${BEARCLAW_DRIFT_MAX:-10}"
-    if [ "${DRIFT_N:-0}" -gt "$DRIFT_MAX" ]; then
-        warn "bearclaw drift: ~$DRIFT_N files out of sync (> $DRIFT_MAX) — run the sync pass (docs/bearclaw-sync.md)"
-    else
-        pass "bearclaw drift within threshold (~${DRIFT_N:-0} files)"
-    fi
+    # Count only what a sync pass could actually resolve. The old count was every
+    # indented line, which included two categories that can never reach zero:
+    # PUBLIC ONLY (LICENSE, .github/, wiki/, contributor PRs — flow is
+    # private->public only, so they are SUPPOSED to exist there alone) and the
+    # private-only paths that must never cross at all (docs/ entirely, and
+    # .claude/ machine-local memory). That made this a permanent yellow, which
+    # is how a check stops being read.
+    DRIFT_N=$(printf '%s' "$DRIFT_OUT" | awk '
+        /^DIFFER/       { sec="differ";  next }
+        /^PRIVATE ONLY/ { sec="private"; next }
+        /^PUBLIC ONLY/  { sec="public";  next }
+        /^[^[:space:]]/ { sec="";        next }
+        sec == "differ"  { n++; next }
+        sec == "private" && $1 !~ /^(\.claude|docs)\// { n++ }
+        END { print n+0 }')
+    # Reported, never graded. Even after excluding the never-actionable
+    # categories most DIFFER entries are deliberate genericization (the twin
+    # has its own wording and banner) rather than staleness, and telling the
+    # two apart needs a last-sync marker this repo does not keep — so there is
+    # no threshold worth failing on, and a warn that can never clear is one you
+    # learn to scroll past.
+    info "bearclaw: ~$DRIFT_N portable files differ from the public twin (excludes public-only + never-cross paths) — reconcile via docs/bearclaw-sync.md"
 fi
 
 printf '\n\033[1mSummary:\033[0m \033[32m%d pass\033[0m, \033[33m%d warn\033[0m, \033[31m%d fail\033[0m\n' "$PASS" "$WARN" "$FAIL"

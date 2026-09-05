@@ -240,10 +240,20 @@ fi
 # re-running is safe once the marketplace/plugin already exist.
 if [ "$DRY" -eq 1 ]; then
   say "would: install deep-think plugin (marketplace add + plugin install) if claude CLI is on PATH"
+  say "would: install pm-skills plugin (borghei/Claude-Skills marketplace) if claude CLI is on PATH"
 elif command -v claude >/dev/null 2>&1; then
   claude plugin marketplace add bis-code/claude-plugins >/dev/null 2>&1 || true
   claude plugin install deep-think@bis-code >/dev/null 2>&1 || true
   say "ok   deep-think plugin (marketplace + install)"
+  # Sprint ceremonies (sprint-plan, backlog-refinement, story-splitting,
+  # sprint-retrospective) come from borghei's pm-skills plugin rather than
+  # copies in skills/: the plugin keeps its license (MIT + Commons Clause) and
+  # tracks upstream, where a vendored copy drops the LICENSE and goes stale.
+  # Cost: the bundle is 66 skills, roughly 4k tokens of descriptions per
+  # session. The marketplace name is the manifest's "name", not the repo.
+  claude plugin marketplace add borghei/Claude-Skills >/dev/null 2>&1 || true
+  claude plugin install pm-skills@claude-code-skills >/dev/null 2>&1 || true
+  say "ok   pm-skills plugin (sprint ceremonies; marketplace + install)"
 else
   say "skip deep-think plugin install (claude CLI not on PATH)"
 fi
