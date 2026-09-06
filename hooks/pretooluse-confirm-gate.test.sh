@@ -17,6 +17,8 @@ check() { # $1=desc $2=json_input $3=DENY|PASS
 check "bare git push denied"          '{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}' DENY
 check "confirmed prefix passes"       '{"tool_name":"Bash","tool_input":{"command":"CLAUDE_CONFIRMED=1 git push origin main"}}' PASS
 check "suffix-confirm bypass denied"  '{"tool_name":"Bash","tool_input":{"command":"git push origin main && CLAUDE_CONFIRMED=1 echo ok"}}' DENY
+check "confirm on the gated segment passes (tests inline)" '{"tool_name":"Bash","tool_input":{"command":"pytest -q && CLAUDE_CONFIRMED=1 git push origin main"}}' PASS
+check "confirm on an unrelated middle segment still denied" '{"tool_name":"Bash","tool_input":{"command":"pytest -q; CLAUDE_CONFIRMED=1 echo ok; git push origin main"}}' DENY
 check "newline command valid json"    '{"tool_name":"Bash","tool_input":{"command":"git push\nrm -rf /tmp/x"}}' DENY
 check "echo mentioning git push"      '{"tool_name":"Bash","tool_input":{"command":"echo \"git push is fine\""}}' PASS
 check "railway config read passes"    '{"tool_name":"Bash","tool_input":{"command":"cat railway.toml"}}' PASS
