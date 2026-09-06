@@ -23,7 +23,10 @@ CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ "$TOOL" = "Bash" ] || exit 0
 [ -n "$CMD" ] || exit 0
 
-# Confirmation is honored ONLY as a leading prefix of the entire command.
+# Confirmation is honored as a leading prefix of the entire command, or of the
+# gated segment itself (`pytest -q && CLAUDE_CONFIRMED=1 git push ...`), so a
+# test run and a confirmed push can share one call. A confirm on some OTHER
+# segment (`git push && CLAUDE_CONFIRMED=1 echo ok`) confirms nothing.
 case "$CMD" in
     CLAUDE_CONFIRMED=1\ *|CLAUDE_CONFIRMED=1) exit 0 ;;
 esac
@@ -37,6 +40,9 @@ IFS='
 '
 for seg in $segments; do
     seg=$(printf '%s' "$seg" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    case "$seg" in
+        CLAUDE_CONFIRMED=1\ *) continue ;;   # this segment is confirmed
+    esac
     case "$seg" in
         "git push"|"git push "*)              gated="git push" ;;
         "gh pr create"|"gh pr create "*)      gated="gh pr create" ;;
@@ -73,7 +79,7 @@ IFS=$old_ifs
 
 [ -n "$gated" ] || exit 0
 
-REASON="Outward-facing action '$gated' requires explicit confirmation. Re-run with the command prefixed by CLAUDE_CONFIRMED=1 once you are sure."
+REASON="Outward-facing action '$gated' requires explicit confirmation. Re-run with CLAUDE_CONFIRMED=1 prefixed to the whole command, or to the '$gated' segment itself (e.g. 'pytest -q && CLAUDE_CONFIRMED=1 git push ...'); a confirm on any other segment does not count."
 jq -n --arg reason "$REASON" \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
 exit 0
