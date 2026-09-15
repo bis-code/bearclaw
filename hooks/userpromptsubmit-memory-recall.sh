@@ -16,8 +16,6 @@ fi
 # One definition of where memory lives, shared with SessionStart, Stop and
 # bin/claude-memory-recall — see hooks/lib/memory-roots.sh for why.
 [ -f "$DIR/lib/memory-roots.sh" ] && . "$DIR/lib/memory-roots.sh"
-# Transcript history, as a tier that fires only on a question about the past.
-[ -f "$DIR/lib/episodic-recall.sh" ] && . "$DIR/lib/episodic-recall.sh"
 INPUT=$(cat 2>/dev/null)
 PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null)
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
@@ -103,30 +101,9 @@ BLOCK=$(printf '%s' "$MERGED" \
       --top-k "${MEMORY_TOP_K:-4}" --budget-tokens "${MEMORY_BUDGET_TOKENS:-225}" \
       "$@" \
     3>"${IDS_FILE:-/dev/null}" 2>/dev/null)
-# Transcript history. Runs only when the prompt asks about what happened before,
-# so it costs nothing on an ordinary turn — see hooks/lib/episodic-recall.sh for
-# why the trigger is intent rather than "curated recall found nothing" (measured:
-# curated recall found something on 40 of 40 eval prompts, so a score-based
-# trigger would never have fired at all).
-EPISODIC=""
-if command -v episodic_recall_block >/dev/null 2>&1; then
-  EPISODIC=$(episodic_recall_block "$PROMPT" 2 2>/dev/null)
-fi
-
-if [ -z "$BLOCK" ] && [ -z "$EPISODIC" ]; then
+if [ -z "$BLOCK" ]; then
   [ -n "$IDS_FILE" ] && rm -f "$IDS_FILE"
   exit 0
-fi
-# Kept as separate blocks on purpose: a curated memory was written down
-# deliberately, a transcript line is only something that was once said. Merging
-# them would launder the second into the authority of the first.
-if [ -n "$EPISODIC" ]; then
-  if [ -n "$BLOCK" ]; then
-    BLOCK="$BLOCK
-$EPISODIC"
-  else
-    BLOCK="$EPISODIC"
-  fi
 fi
 # Log surfaced ids (best-effort; never blocks the prompt).
 if [ -n "$IDS_FILE" ] && [ -s "$IDS_FILE" ]; then
